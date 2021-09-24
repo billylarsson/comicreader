@@ -1,25 +1,575 @@
-from bscripts.file_handling import concurrent_pdf_to_webp_convertion, concurrent_cbx_to_webp_convertion
-import pickle
-import shutil
-import os
+from functools import partial
 import time
-import shutil
-from PyQt5                   import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore            import QPoint, Qt
-from PyQt5.QtGui             import QColor, QImage, QKeySequence, QPainter
-from PyQt5.QtGui             import QPalette, QPen, QPixmap
-from PyQt5.QtPrintSupport    import QPrintDialog, QPrinter
-from PyQt5.QtWidgets         import QAction, QLabel, QMainWindow, QMessageBox
-from PyQt5.QtWidgets         import QScrollArea, QShortcut, QSizePolicy
-from bscripts.database_stuff import DB, sqlite
-from bscripts.file_handling  import FileArchiveManager, check_for_pdf_assistance, extract_from_zip_or_pdf
-from bscripts.file_handling  import get_thumbnail_from_zip_or_database, unzipper
-from bscripts.tricks         import tech as t
-#from bscripts.widgets        import GOD
-from functools               import partial
-from script_pack.settings_widgets import UniversalSettingsArea, HighlightRadioBoxGroup, FolderSettingsWidget,ExecutableLookCheckable, GLOBALDeactivate, GOD
+from PyQt5                        import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore                 import QPoint, Qt
+from PyQt5.QtGui                  import QColor, QImage, QKeySequence, QPainter
+from PyQt5.QtGui                  import QPalette, QPen, QPixmap
+from PyQt5.QtPrintSupport         import QPrintDialog, QPrinter
+from PyQt5.QtWidgets              import QAction, QLabel, QMainWindow
+from PyQt5.QtWidgets              import QMessageBox, QScrollArea, QShortcut
+from PyQt5.QtWidgets              import QSizePolicy
+from bscripts.database_stuff      import DB, sqlite
+from bscripts.file_handling       import FileArchiveManager
+from bscripts.file_handling       import check_for_pdf_assistance
+from bscripts.file_handling       import concurrent_cbx_to_webp_convertion
+from bscripts.file_handling       import concurrent_pdf_to_webp_convertion
+from bscripts.file_handling       import extract_from_zip_or_pdf
+from bscripts.file_handling       import get_thumbnail_from_zip_or_database
+from bscripts.tricks              import tech as t
+from script_pack.preset_colors import *
+from functools                    import partial
+from script_pack.settings_widgets import ExecutableLookCheckable,CheckableWidget,CheckableAndGlobalHighlight,FolderSettingsAndGLobalHighlight
+from script_pack.settings_widgets import FolderSettingsWidget, GLOBALDeactivate
+from script_pack.settings_widgets import GOD, HighlightRadioBoxGroup
+from script_pack.settings_widgets import UniversalSettingsArea
 import math
 import os
+import pickle
+import shutil
+
+
+class ReadingMenu(HighlightRadioBoxGroup):
+    def __init__(self, place, *args, **kwargs):
+        super().__init__(place=place, *args, **kwargs)
+
+    def post_init(self):
+        self.button.setMouseTracking(True)
+        self.textlabel.setMouseTracking(True)
+
+        self.directives['activation'] = [
+            dict(object=self.textlabel, color=TXT_SHINE),
+            dict(object=self.button, background=BTN_SHINE),
+        ]
+
+        self.directives['deactivation'] = [
+            dict(object=self.textlabel, color=TXT_SHADE),
+            dict(object=self.button, background=TXT_DARKTRANS),
+        ]
+
+        self.signal_global_gui_change(directive='deactivation')
+
+    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+        if ev.button() == 1:
+            self.button_clicked()
+        elif ev.button() == 2:
+            self.killsignal.finished.emit()
+
+class ChangePage(ReadingMenu):
+    def button_clicked(self):
+        """
+        beware that this is a hack, change_page goes to
+        different parental fn depending on inheritance
+        """
+        self.change_page()
+        self.killsignal.finished.emit()
+
+class LastPage(ReadingMenu):
+    def button_clicked(self):
+        _, __, total = self.current_and_how_many_pages()
+        if total:
+            self.show_this_page(index=total - 1, next=True)
+        else:
+            self.slaves_can_alter = False
+            self.textlabel.setText('FILE ERROR')
+            t.correct_broken_font_size(self.textlabel)
+            t.style(self.textlabel, color='red')
+            t.style(self.button, background='orange')
+            return
+
+        self.killsignal.finished.emit()
+
+class AutoChangePage(ReadingMenu):
+    def __init__(self, place, *args, **kwargs):
+        super().__init__(place=place, *args, **kwargs)
+        self.sleep_time = 3
+        self.activation_toggle(force=True, save=False)
+        signal = t.signals('reading')
+        signal.finished.connect(self.quit)
+
+    def quit(self):
+        self.activation_toggle(force=False, save=False)
+
+    def modify_sleep(self, modify):
+        self.sleep_time += modify
+        if self.sleep_time < 1:
+            self.sleep_time = 1
+
+    def button_clicked(self, virgin=True):
+        primary, secondary, total = self.current_and_how_many_pages()
+        if not self.activated or not total:
+            self.quit()
+            return
+
+        if primary+1 == total or secondary+1 == total:
+            self.quit()
+            return
+
+        if virgin:
+            moretime = QShortcut(QKeySequence('ctrl+up'), self.pixmap_object)
+            moretime.activated.connect(partial(self.modify_sleep, +1))
+
+            lesstime = QShortcut(QKeySequence('ctrl+down'), self.pixmap_object)
+            lesstime.activated.connect(partial(self.modify_sleep, -1))
+
+            esc = QShortcut(QKeySequence('ctrl+q'), self.pixmap_object)
+            esc.activated.connect(self.quit)
+
+        self.goto_next_page()
+        print(self.sleep_time)
+        t.start_thread(
+            self.dummy, worker_arguments=self.sleep_time,
+            finished_function=self.button_clicked, finished_arguments=False
+        )
+
+class BookmarkDeleteSaveButton(CheckableAndGlobalHighlight):
+
+    def default_event_colors(self):
+        self.directives['activation'] = [
+            dict(object=self.textlabel, background=TXT_DARKTRANS, color='white'),
+            dict(object=self.button, background=BTN_SHINE, color=BTN_SHINE),
+        ]
+
+        self.directives['deactivation'] = [
+            dict(object=self.textlabel, background=TXT_DARKTRANS, color=BTN_SHADE),
+            dict(object=self.button, background=TXT_SHADE, color=BTN_SHADE),
+        ]
+
+    def unpack_bookmarks(self):
+        if self.database[DB.comics.bookmarks]:
+            b = pickle.loads(self.database[DB.comics.bookmarks])
+        else:
+            b = {}
+        return b
+
+    def update_bookmark_database(self, dictionary):
+        if not dictionary:
+            data = None
+        else:
+            data = pickle.dumps(dictionary)
+
+        query = 'update comics set bookmarks = (?) where id is (?)'
+        values = data, self.database[0]
+        sqlite.execute(query=query, values=values)
+        self.database = sqlite.refresh_db_input('comics', self.database)
+
+    def save_this_bookmark(self):
+        def show_bookmark_button(self):
+            for i in self.large_page.bookmarks['buttons']:
+                if i.bookmark_id == self.bookmark_id:
+                    return
+
+            self.large_page.parent.database = sqlite.refresh_db_input('comics', self.database)
+            self.large_page.parent.show_bookmarks(only_this_bookmark_id=self.bookmark_id)
+            self.parent.raise_()
+
+        def generate_bookmark_id(self, b, page):
+            """
+            currently using self.type as bookmark_id so this
+            function may be overcautious, but if future
+            change this may fix an unvanted experience
+            :param b: bookmark_dictionary
+            :param page: int
+            :return: md5 hash (uuid4 + time.time + salt)
+            """
+            if self.bookmark_id:
+                return self.bookmark_id
+
+            bookmark_id = t.md5_hash_string(random=True, upper=True)
+            while bookmark_id.upper() in b[page]:
+                bookmark_id = t.md5_hash_string(random=True, upper=True)
+
+            return bookmark_id
+
+        def reset_button(self):
+            def change_back_to_save():
+                self.textlabel.setText('SAVE')
+            def dummy():
+                time.sleep(2)
+
+            self.textlabel.setText('DONE')
+            t.start_thread(dummy, finished_function=change_back_to_save)
+
+        def generate_pickle(text, pctx, pcty, b, bookmark_id):
+            c = dict(x=round(pctx, 4), y=round(pcty, 4))
+
+            for k, v in c.items():
+                if v > 1:
+                    c[k] = 0.9999
+                elif v < 0:
+                    c[k] = 0.0001
+
+            b[page][bookmark_id] = dict(text=text, x=c['x'], y=c['y'], time=round(time.time()))
+
+        def save_cordinates(self, bookmark_widget):
+            if self.parent_button:
+                evx = self.parent_button.pos().x()
+                evy = self.parent_button.pos().y()
+            else:
+                evx = bookmark_widget.pos().x()
+                evy = bookmark_widget.pos().y()
+
+            return evx, evy
+
+        text = self.textedit.toPlainText().strip()
+        self.database = sqlite.refresh_db_input('comics', self.database)  # important
+
+        b = self.unpack_bookmarks()
+
+        total_w = self.pixmap_object.width()
+        total_h = self.pixmap_object.height()
+
+        for i in self.large_page.bookmarks['widgets']:
+
+            if i.bookmark_id != self.bookmark_id: # not parent (self is a button only with limited access)
+                continue
+
+            evx, evy = save_cordinates(self, i)
+
+            primary, secondary, _ = self.current_and_how_many_pages()
+
+            if secondary:
+                page_one_x_ends = total_w * self.pixmap_object.primary[1]
+                page_two_x_start = total_w * self.pixmap_object.secondary[0]
+
+                if evx > page_two_x_start:
+                    page = secondary
+                    pctx = evx - page_two_x_start
+                    pctx = pctx / (total_w - page_two_x_start)
+                    pcty = evy / total_h
+                else:
+                    page = primary
+                    pctx = evx / page_one_x_ends
+                    pcty = evy / total_h
+
+            else:
+                page = primary
+                pctx = evx / total_w
+                pcty = evy / total_h
+
+            if page not in b:
+                b[page] = {}
+
+            bookmark_id = generate_bookmark_id(self, b, page)
+            generate_pickle(text, pctx, pcty, b, bookmark_id)
+            self.update_bookmark_database(dictionary=b)
+            show_bookmark_button(self)
+            reset_button(self)
+            break
+
+    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+        self.save_this_bookmark()
+
+class BookmarkDeleteButton(BookmarkDeleteSaveButton):
+    def default_event_colors(self):
+        self.directives['activation'] = [
+            dict(object=self.textlabel, background=TXT_DARKTRANS, color='white'),
+            dict(object=self.button, background=BTN_SHINE, color=BTN_SHINE),
+        ]
+
+        self.directives['deactivation'] = [
+            dict(object=self.textlabel, background=TXT_DARKTRANS, color=BTN_SHADE),
+            dict(object=self.button, background=TXT_SHADE, color=BTN_SHADE),
+        ]
+
+    def delete_this_bookmark(self):
+        self.database = sqlite.refresh_db_input('comics', self.database)
+        for i in self.large_page.bookmarks['widgets']:
+
+            if i.bookmark_id != self.bookmark_id: # not parent (self is a button only with limited access)
+                continue
+
+            b = self.unpack_bookmarks()
+            for page in b:
+
+                if self.bookmark_id in b[page]:
+
+                    b[page].pop(self.bookmark_id)
+
+                    if b[page] == {}: # no bookmarks left, dont save empty page entry
+                        b.pop(page)
+
+                    self.update_bookmark_database(dictionary=b)
+                    break
+
+            for category in ['buttons', 'widgets']:
+                for count, i in enumerate(self.large_page.bookmarks[category]):
+                    if self.bookmark_id == i.bookmark_id:
+                        self.large_page.bookmarks[category].pop(count)
+                        i.close()
+            return
+
+    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+        self.delete_this_bookmark()
+
+def make_bookmark(large_page, bookmark_id=False, parent_button=None):
+
+    class U(UniversalSettingsArea):
+        def pop_self_from_parents_list(self):
+            for count, i in enumerate(self.parent.bookmarks['widgets']):
+                if i == self:
+                    self.parent.bookmarks['widgets'].pop(count)
+                    return
+
+        def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+            self.old_position = ev.globalPos()
+            if ev.button() == 2:
+                self.pop_self_from_parents_list()
+                self.close()
+
+    if not bookmark_id:
+        bookmark_id = t.md5_hash_string(random=True, upper=True)
+
+    set = U(large_page, type='_bmk' + bookmark_id)
+    set.bookmark_id = bookmark_id
+    set.setToolTip('RIGHT CLICK TO CLOSE')
+
+    set.textedit = QtWidgets.QTextEdit(set)
+
+    t.style(set.textedit, background=TXT_DARKTRANS, color=TXT_SHINE)
+    set.blackgrays = [set.textedit]
+    set.textedit.show()
+
+    d1 = [
+        dict(
+            text='SAVE',
+            widget=BookmarkDeleteSaveButton,
+            text_background=TXT_DARKTRANS,
+            shrink_to_text=dict(margin=2),
+            post_init=True,
+
+            kwargs=dict(
+                type='_savbtn' + bookmark_id,
+                extravar=dict(
+                    database=large_page.parent.database,
+                    current_and_how_many_pages=large_page.current_and_how_many_pages,
+                    pixmap_object=large_page.parent.pixmap_object,
+                    textedit=set.textedit,
+                    large_page=large_page,
+                    parent_button=parent_button,
+                    bookmark_id=bookmark_id,
+                    parent=set,
+                )
+            )
+        )
+    ]
+
+    d2 = [
+        dict(
+            text='DELETE',
+            widget=BookmarkDeleteButton,
+            text_background=TXT_DARKTRANS,
+            shrink_to_text=dict(margin=2),
+            post_init=True,
+
+            kwargs=dict(
+                type='_delbtn' + bookmark_id,
+                extravar=dict(
+                    database=large_page.parent.database,
+                    parent_button=parent_button,
+                    large_page=large_page,
+                    bookmark_id=bookmark_id,
+                    parent=set,
+                )
+            )
+        )
+    ]
+
+    header = set.make_header(title='ADD/REMOVE BOOKMARK', width=200, height=20, background=TXT_DARKTRANS)
+
+    bg1 = set.make_this_into_checkable_buttons(d1, canvaswidth=130, toolsheight=20)
+    bg2 = set.make_this_into_checkable_buttons(d2, canvaswidth=130, toolsheight=20)
+
+    t.pos(header, move=[30, 0])
+    t.pos(bg1, below=header, y_margin=3)
+    t.pos(bg2, after=bg1, x_margin=3)
+    t.pos(header, left=bg1, right=bg2)
+    t.pos(set.textedit, top=dict(bottom=bg1), y_margin=3, width=bg2.geometry().right() + 30, height=300)
+    t.correct_broken_font_size(header)
+    set.expand_me([x for x in set.blackgrays])
+
+    return set
+
+class NewBookmark(ReadingMenu):
+    def button_clicked(self):
+        set = make_bookmark(self.parent)
+        self.parent.bookmarks['widgets'].append(set)
+        t.pos(set, top=self.parent.reading_menu, left=self.parent.reading_menu)
+        self.killsignal.finished.emit()
+
+
+class EachPage(QtWidgets.QLabel):
+    def __init__(self, place, parent):
+        super().__init__(place)
+        self.parent = parent
+        self.bookmarks = dict(buttons=[], widgets=[])
+
+    def current_and_how_many_pages(self):
+        database = self.parent.database
+        if database[DB.comics.file_contents]:
+            files = pickle.loads(database[DB.comics.file_contents])
+            return self.parent.who_am_primary, self.parent.who_am_secondary, len(files['good_files'])
+
+        else:
+            rv = check_for_pdf_assistance(database[DB.comics.local_path], pagecount=True)
+
+            if rv:
+                return self.parent.who_am_primary, self.parent.who_am_secondary, rv
+
+        return self.parent.who_am_primary, self.parent.who_am_secondary, False
+
+    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+        self.parent.old_position = ev.globalPos()
+
+        if ev.button() == 2:
+            if 'reading_menu' in dir(self):
+                self.reading_menu.close()
+                del self.reading_menu
+
+            signal = t.signals(name='_reading_menu', reset=True)
+
+            d1 = [
+                dict(
+                    text='BOOKMARK',
+                    widget=NewBookmark,
+                    post_init=True,
+                    button_width_factor=2,
+                    maxsize=12,
+                    kwargs=dict(
+                        type='_page_new_bookmark',
+                        extravar=dict(
+                            parent=self,
+                            killsignal=signal,
+                        )
+                    ),
+                )]
+            d2 = [
+                dict(
+                    text='NEXT PAGE',
+                    widget=ChangePage,
+                    post_init=True,
+                    button_width_factor=2,
+                    maxsize=12,
+                    kwargs=dict(
+                        type='_next_page',
+                        extravar=dict(
+                            change_page=self.parent.goto_next_page,
+                            killsignal=signal,
+                        )
+                    )
+                ),
+                dict(
+                    text='PREV PAGE',
+                    widget=ChangePage,
+                    post_init=True,
+                    button_width_factor=2,
+                    maxsize=12,
+                    kwargs=dict(
+                        type='_prev_page',
+                        extravar=dict(
+                            change_page=self.parent.goto_previous_page,
+                            killsignal=signal,
+                        )
+                    )
+                )]
+            d3 = [
+                dict(
+                    text='FIRST PAGE',
+                    widget=ChangePage,
+                    post_init=True,
+                    button_width_factor=2,
+                    maxsize=12,
+                    kwargs=dict(
+                        type='_first_page',
+                        extravar=dict(
+                            change_page=self.parent.show_this_page,
+                            killsignal=signal,
+                        )
+                    )
+                ),
+                dict(
+                    text='LAST PAGE',
+                    widget=LastPage,
+                    post_init=True,
+                    button_width_factor=2,
+                    maxsize=12,
+                    kwargs=dict(
+                        type='_last_page',
+                        extravar=dict(
+                            show_this_page=self.parent.show_this_page,
+                            current_and_how_many_pages=self.current_and_how_many_pages,
+                            killsignal=signal,
+                        )
+                    )
+                ),
+                dict(
+                    text='3s PAGE TURN',
+                    widget=AutoChangePage,
+                    post_init=True,
+                    button_width_factor=2,
+                    maxsize=12,
+                    tooltip='changes page every 3 seconds\nPRESS CTRL+Q to stop\nCTRL+UP / DOWN change speed',
+                    kwargs=dict(
+                        type='_autocycle_3_sec',
+                        extravar=dict(
+                            goto_next_page=self.parent.goto_next_page,
+                            current_and_how_many_pages=self.current_and_how_many_pages,
+                            dummy=self.parent.main.dummy,
+                            pixmap_object=self.parent.pixmap_object
+                        )
+                    )
+                ),
+            ]
+
+            def generate_menu_title(self):
+                primary, secondary, total = self.current_and_how_many_pages()
+                title = f"PAGE {primary + 1}"
+
+                if secondary:
+                    title += f" and {secondary + 1}"
+                if total:
+                    title += f" of {total}"
+
+                return title
+
+            set = UniversalSettingsArea(self)
+
+            title = generate_menu_title(self)
+            header = set.make_header(title=title, width=200, height=22)
+
+            bg1 = set.make_this_into_checkable_buttons(d1, canvaswidth=200)
+            bg2 = set.make_this_into_checkable_buttons(d2, canvaswidth=200)
+            bg3 = set.make_this_into_checkable_buttons(d3, canvaswidth=200)
+
+            xpos = ev.pos().x()
+            ypos = ev.pos().y()
+
+            t.pos(set, move=[xpos-50, ypos-30])
+            t.pos(bg1, below=header, y_margin=3)
+            t.pos(bg2, below=bg1, y_margin=5)
+            t.pos(bg3, below=bg2, y_margin=5)
+
+            set.expand_me([x for x in set.blackgrays])
+
+            signal.finished.connect(lambda: set.close())
+
+            self.reading_menu = set
+
+
+    def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
+        x = self.parent.x()
+        y = self.parent.y()
+
+        if self.parent.prefered_reading_position != (x,y,):
+            self.parent.prefered_reading_position = (x,y,)
+            t.save_config('prefered_reading_position', self.parent.prefered_reading_position)
+
+    def mouseMoveEvent(self, event):
+        if event.button() == 2 or 'old_position' not in dir(self.parent):
+            return
+
+        delta = QPoint(event.globalPos() - self.parent.old_position)
+        self.parent.move(self.parent.x() + delta.x(), self.parent.y() + delta.y())
+        self.parent.old_position = event.globalPos()
 
 class PAGE(QtWidgets.QLabel):
     def __init__(self, main=None, database=None, index=0, file=None):
@@ -36,7 +586,7 @@ class PAGE(QtWidgets.QLabel):
 
         self.setWindowFlags(Qt.FramelessWindowHint)
 
-        self.pixmap_object = QtWidgets.QLabel(self)
+        self.pixmap_object = EachPage(self, parent=self)
 
         self.pixmap_object.setScaledContents(True)
         self.pixmap_object.setLineWidth(0)
@@ -89,6 +639,8 @@ class PAGE(QtWidgets.QLabel):
         self.show_this_page(index=self.who_am_primary, next=True)
 
     def quit(self):
+        signal = t.signals('reading')
+        signal.finished.emit()
         self.close()
 
     def post_init(self, database, file, index):
@@ -125,10 +677,11 @@ class PAGE(QtWidgets.QLabel):
 
     def goto_next_page(self):
         self.who_am_primary += 1
-        self.show_this_page(self.who_am_primary, next=True)
+        if not self.show_this_page(self.who_am_primary, next=True):
+            self.who_am_primary += -1
 
     def attach_qgrip_to_image(self):
-        self.qgrip = QtWidgets.QSizeGrip(self, styleSheet='background-color:rgba(0,0,0,0)')
+        self.qgrip = QtWidgets.QSizeGrip(self.pixmap_object, styleSheet='background-color:rgba(0,0,0,0)')
         self.qgrip.setGeometry(self.width() - 30, self.height() - 30, self.width(), 30)
         self.qgrip.show()
 
@@ -136,6 +689,7 @@ class PAGE(QtWidgets.QLabel):
         width, height = self.get_screen_size()
 
         self.pixmap = QPixmap(imgfile).scaledToHeight(height, QtCore.Qt.SmoothTransformation)
+
         if self.pixmap.width() > width:
             self.pixmap = QPixmap(imgfile).scaledToWidth(width, QtCore.Qt.SmoothTransformation)
 
@@ -144,6 +698,10 @@ class PAGE(QtWidgets.QLabel):
         self.content_layout.addWidget(self.pixmap_object)
         t.pos(self, size=[self.pixmap.width(), self.pixmap.height()])
         self.attach_qgrip_to_image()
+
+        self.pixmap_object.primary = 0, 0.9999
+        self.pixmap_object.secondary = False
+        self.who_am_secondary = False
 
     def set_pixmap_mode_two(self, imgfile):
         width, height = self.get_screen_size()
@@ -155,6 +713,10 @@ class PAGE(QtWidgets.QLabel):
         self.content_layout.addWidget(self.pixmap_object)
         t.pos(self, size=[width, height])
         self.attach_qgrip_to_image()
+
+        self.pixmap_object.primary = 0, 0.9999
+        self.pixmap_object.secondary = False
+        self.who_am_secondary = False
 
     def set_pixmap_mode_three(self, index=0, next=False, previous=False):
 
@@ -227,7 +789,11 @@ class PAGE(QtWidgets.QLabel):
                             painter.drawRect(0, 0, primarypixmap.width(), height - 3)
                             painter.drawRect(primarypixmap.width() + spacer, 0, secondarypixmap.width()-2, height - 3)
 
-                        self.pixmap_object.setPixmap(pm)
+                        self.pixmap = pm
+                        self.pixmap_object.setPixmap(self.pixmap)
+
+                        self.pixmap_object.primary = 0, primarypixmap.width() / pm.width() # x percent
+                        self.pixmap_object.secondary = (primarypixmap.width() + spacer) / pm.width(), 1
 
                         self.content_layout.addWidget(self.pixmap_object)
 
@@ -283,10 +849,16 @@ class PAGE(QtWidgets.QLabel):
         return width, height
 
     def show_this_page(self, index=0, next=False, previous=False):
-        if not os.path.exists(self.database[DB.comics.local_path]):
+        if not 'database' in dir(self):
+            return False
+        else:
             self.database = sqlite.refresh_db_input('comics', self.database)
-            if not os.path.exists(self.database[DB.comics.local_path]):
-                return
+
+        if not self.database:
+            return False
+
+        if not os.path.exists(self.database[DB.comics.local_path]):
+            return
 
         if index < 0:
             self.who_am_primary = 0
@@ -297,7 +869,7 @@ class PAGE(QtWidgets.QLabel):
             if not page:
                 return False
 
-            self.clear()
+            self.pixmap_object.clear()
             self.set_pixmap_mode_two(page)
 
         elif t.config('reading_mode_three') or t.config('reading_mode_four'):
@@ -309,21 +881,199 @@ class PAGE(QtWidgets.QLabel):
             if not page:
                 return False
 
-            self.clear()
+            self.pixmap_object.clear()
             self.set_pixmap_mode_one(page)
 
+        self.clear_bookmarks()
+        self.show_bookmarks()
         self.cleanup()
+        return True
+
+    def clear_bookmarks(self):
+        for category in ['buttons', 'widgets']:
+            for i in range(len(self.pixmap_object.bookmarks[category])-1,-1,-1):
+                self.pixmap_object.bookmarks[category][i].close()
+                self.pixmap_object.bookmarks[category].pop(i)
+
+    def show_bookmarks(self, only_this_bookmark_id=False):
+        """
+        makes a small bookmark button on the image thats clickable and opening the bookmark widget
+        :param only_this_bookmark_id: will ONLY draw this bookmark and ignoring others
+        """
+        class MoveBookMark(QtWidgets.QLabel):
+            def __init__(self, place):
+                """
+                this is unsmart solution for moving bookmark button around.
+                8 pixel width on each end makes button movable instead of clickable
+                """
+                super().__init__(place)
+                self.parent = place
+                self.show()
+
+            def mouseMoveEvent(self, ev: QtGui.QMouseEvent) -> None:
+                if ev.button() == 2:
+                    return
+
+                if 'old_position' not in dir(self.parent):
+                    return
+
+                delta = QPoint(ev.globalPos() - self.parent.old_position)
+                self.parent.move(self.parent.x() + delta.x(), self.parent.y() + delta.y())
+                self.parent.old_position = ev.globalPos()
+
+            def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
+                pass
+
+            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                self.parent.old_position = ev.globalPos()
+
+        class ShowSavedBookmarkButton(GLOBALDeactivate):
+            def __init__(self, place, database, bookmark_id, *args, **kwargs):
+                """
+                given database and bookmark_id it will unpack bookmarks dictionary
+                and iter until it finds bookmark id and then draw it self
+                :param database: tuple
+                :param bookmark_id: string
+                """
+                super().__init__(place=place, *args, **kwargs)
+
+                self.parent.bookmarks['buttons'].append(self)
+
+                self.database = database
+                self.bookmark_id = bookmark_id
+                self.showing_child_widget = False
+                self.setFrameShape(QtWidgets.QFrame.Box)
+                self.setLineWidth(2)
+                self.setText('BOOKMARK')
+                self.default_event_colors()
+                self.setAlignment(QtCore.Qt.AlignHCenter|QtCore.Qt.AlignVCenter)
+                t.style(self, background=BTN_OFF, color=TXT_BLACK)
+                t.pos(self, size=[80,20])
+                t.correct_broken_font_size(self, minsize=12, maxsize=13)
+                self.make_movalbe_ends()
+
+            def make_movalbe_ends(self):
+                """
+                makes edge-handles to move self around
+                """
+                for i in [8, self.width()]:
+                    move_label = MoveBookMark(self)
+                    t.pos(move_label, inside=self, width=8, right=i)
+                    t.style(move_label, background='transparent')
+
+            def load_dictionary_show_widget(self):
+
+                def make_nice_position(self, set):
+                    t.pos(set, top=dict(bottom=self), left=dict(right=self), y_margin=10)
+
+                    if set.geometry().right() > self.parent.geometry().right():
+                        t.pos(set, right=self, x_margin=10)
+
+                    if set.geometry().bottom() > self.parent.geometry().bottom():
+                        t.pos(set, bottom=dict(top=self), y_margin=10)
+
+                b = pickle.loads(self.database[DB.comics.bookmarks])
+                for page in b:
+                    for bookmark_id, values in b[page].items():
+                        if bookmark_id == self.bookmark_id:
+                            set = make_bookmark(self.parent, bookmark_id=bookmark_id, parent_button=self)
+                            set.textedit.setText(values['text'])
+                            self.parent.bookmarks['widgets'].append(set)
+                            make_nice_position(self, set)
+                            self.showing_child_widget = True
+                            return
+
+            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                if self.type:
+                    for i in self.parent.bookmarks['widgets']:
+                        if i.bookmark_id == self.bookmark_id:
+                            if self.showing_child_widget:
+                                self.showing_child_widget = False
+                                i.hide()
+                            else:
+                                self.showing_child_widget = True
+                                i.show()
+                            return
+
+                self.database = sqlite.refresh_db_input('comics', self.database)
+
+                if not self.database[DB.comics.bookmarks]:
+                    return
+
+                self.load_dictionary_show_widget()
+
+            def default_event_colors(self):
+                self.directives['activation'] = [
+                    dict(object=self, background=BTN_SHINE, color=TXT_BLACK),
+                ]
+
+                self.directives['deactivation'] = [
+                    dict(object=self, background=BTN_OFF, color=TXT_BLACK),
+                ]
+
+        if not self.database[DB.comics.bookmarks]:
+            return
+
+        b = pickle.loads(self.database[DB.comics.bookmarks])
+
+        primary, secondary, _ = self.pixmap_object.current_and_how_many_pages()
+
+        self.pixmap_object.show()
+
+        def get_width_height_page_one_x_end(self):
+            total_w = self.pixmap.width()
+            total_h = self.pixmap.height()
+            page_one_x_ends = total_w * self.pixmap_object.primary[1]
+            return total_w, total_h, page_one_x_ends
+
+        def position_primary_bookmark(self, bookmark):
+            total_w, total_h, page_one_x_ends = get_width_height_page_one_x_end(self)
+            x = page_one_x_ends * vv['x']
+            y = total_h * vv['y']
+            t.pos(bookmark, left=x, top=y)
+
+        def position_secondary_bookmark(self, bookmark):
+            total_w, total_h, page_one_x_ends = get_width_height_page_one_x_end(self)
+            page_two_x_start = total_w * self.pixmap_object.secondary[0]
+            page_two_pixels = total_w - page_two_x_start
+
+            x = page_two_x_start + (page_two_pixels * vv['x'])
+            y = total_h * vv['y']
+            t.pos(bookmark, left=x, top=y)
+
+        def make_primary_bookmark(self, exclusive_bookmark, bookmark_id, database):
+            if exclusive_bookmark and bookmark_id != exclusive_bookmark:
+                return
+
+            bm = ShowSavedBookmarkButton(self.pixmap_object, type='_bm_btn' + kk, bookmark_id=bookmark_id, database=database)
+            position_primary_bookmark(self, bookmark=bm)
+
+        def make_secondary_bookmark(self, exclusive_bookmark, bookmark_id, database):
+            if exclusive_bookmark and bookmark_id != exclusive_bookmark:
+                return
+
+            bm = ShowSavedBookmarkButton(self.pixmap_object, type='_bm_btn' + kk, bookmark_id=bookmark_id, database=database)
+            position_secondary_bookmark(self, bookmark=bm)
+
+        for k,v in b.items():
+
+            if k == primary and not secondary:
+                for kk, vv in b[k].items():
+                    make_primary_bookmark(
+                        self, exclusive_bookmark=only_this_bookmark_id, bookmark_id=kk, database=self.database)
+
+            elif secondary:
+
+                if k == primary:
+                    for kk, vv in b[k].items():
+                        make_primary_bookmark(
+                            self, exclusive_bookmark=only_this_bookmark_id, bookmark_id=kk, database=self.database)
+
+                elif k == secondary:
+                    for kk, vv in b[k].items():
+                        make_secondary_bookmark(self, only_this_bookmark_id, bookmark_id=kk, database=self.database)
 
     def cleanup(self):
-
-        # def when_done(self):
-        #     """
-        #     this is a dev thingey, removes PDF unpackables afterwards
-        #     """
-        #     loc = t.separate_file_from_folder(self.file)
-        #     if loc.ext.lower() == 'pdf' and t.config('single_pdf2webp'):
-        #         signal = t.signals('now_showing_page(s)', reset=True)
-        #         signal.finished.emit()
 
         def update_current_page_progress(self):
             if not self.database[DB.comics.current_page] or self.database[DB.comics.current_page] < self.who_am_primary:
@@ -339,32 +1089,15 @@ class PAGE(QtWidgets.QLabel):
 
         set_scroller_and_position(self)
         update_current_page_progress(self)
-        #t.start_thread(self.main.dummy, worker_arguments=1, finished_function=when_done, finished_arguments=self)
         self.setWindowTitle(f"{self.database[DB.comics.local_path]} page: {self.database[DB.comics.current_page]}")
-
-
-    def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
-        x = self.x()
-        y = self.y()
-
-        self.prefered_reading_position = (x,y,)
-        t.save_config('prefered_reading_position', self.prefered_reading_position)
+        signal = t.signals(name='_reading_menu')
+        signal.finished.emit() # closing reading menu (not beautiful, lazy)
 
     def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
         # this is the grip that resizes the window
         if 'qgrip' in dir(self):
             self.qgrip.setGeometry(self.width()-30, self.height() - 30, self.width(), 30)
 
-    def mouseMoveEvent(self, event):
-        if event.button() == 2 or 'old_position' not in dir(self):
-            return
-        delta = QPoint(event.globalPos() - self.old_position)
-        self.move(self.x() + delta.x(), self.y() + delta.y())
-        self.old_position = event.globalPos()
-
-    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-        if ev.button() == 1:
-            self.old_position = ev.globalPos()
 
 
 class Cover(GOD):
@@ -479,6 +1212,7 @@ class ComicWidget(GOD):
         self.page_label = t.pos(
             new=self,
             below=starting_coordinates,
+            left=self.cover,
             y_margin=1,
             width=progress,
             background='green',
@@ -587,6 +1321,7 @@ class ComicWidget(GOD):
                     t.pos(
                         star,
                         below=starting_coordinates,
+                        left=self.cover,
                         y_margin=1,
                         height=4 * enhancefactor,
                         width=width + extra,
@@ -595,10 +1330,11 @@ class ComicWidget(GOD):
                     )
 
                 elif c != 10:
-                    t.pos(star, coat=self.stars[-1], rightof=self.stars[-1], x_margin=1, background=color)
+                    t.pos(star, coat=self.stars[-1], after=self.stars[-1], x_margin=1, background=color)
                 else:
                     t.pos(star, coat=self.stars[-1], background=color)
-                    t.pos(star, left=self.stars[-1].geometry().right() + 2, right=self.cover.geometry().right() + 2)
+                    t.pos(star, left=self.stars[-1].geometry().right() + 2, right=self.cover)
+                    t.pos(star, width=star, add=1) # not sure why yet
 
                 self.stars.append(star)
                 self.box_been_set.append(star)
@@ -619,12 +1355,13 @@ class ComicWidget(GOD):
         if t.separate_file_from_folder(self.database[DB.comics.local_path]).ext.lower() == 'pdf':
             return
 
-        l = t.pos(new=self.cover, size=[8,8], right=self.cover.geometry().right() - 1, move=[0,1])
+        l = t.pos(new=self.cover, size=[6,6], left=-1, top=-1)
         l.setToolTip('FILE HAS NOT YET BEEN TAGGED')
         l.setFrameShape(QtWidgets.QFrame.Box)
         l.setLineWidth(1)
-        t.style(l, background='rgba(50,50,50,50)', color='rgba(80,80,80,200)')
+        t.style(l, background='transparent', color='rgba(80,80,80,100)')
         t.style(l, background='pink', color='black', border='black', tooltip=True)
+
         self.box_been_set.append(l)
 
     def make_size_and_page_label(self, starting_coordinates, enhancefactor=1):
@@ -661,7 +1398,9 @@ class ComicWidget(GOD):
             t.style(pages, background=background, color=color, font=fontsize)
 
         height = pages.fontMetrics().boundingRect(pages.text()).height()
-        t.pos(pages, width=self.width() + 2, height=height, below=starting_coordinates, move=[-1,0], y_margin=1)
+        top = dict(bottom=starting_coordinates)
+        t.pos(pages, top=top, left=self.cover, right=self.cover, height=height, y_margin=1, x_margin=-2)
+
         self.size_pages_label = pages
         self.box_been_set.append(self.size_pages_label)
 
@@ -721,24 +1460,38 @@ class ComicWidget(GOD):
             self.toggle_and_show_active_event()
 
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
-        if self.database:
-            self.database = sqlite.refresh_db_input(table='comics', db_input=self.database)
+        if ev.button() == 1:
+            if 'database' in dir(self) and self.database:
+                self.database = sqlite.refresh_db_input(table='comics', db_input=self.database)
+                if self.database:
+                    page = PAGE(main=self.main, database=self.database, index=0)
+                    self.main.pages_container.append(page)
+                else:
+                    self.draw_white_lines(color='red', force=True, width=3)
 
-        if not self.database:
-            self.draw_white_lines(color='red', force=True, width=3)
-            return
+            elif not 'database' in dir(self) or not self.database:
+                self.draw_white_lines(color='red', force=True, width=3)
+                return
 
-        for count, i in enumerate(self.main.widgets['info']):
-            if not i.database:
-                continue
+        elif ev.button() == 2:
+            if 'database' in dir(self) and self.database:
+                self.database = sqlite.refresh_db_input(table='comics', db_input=self.database)
 
-            if i.database[0] == self.database[0]:
-                i.close()
-                self.main.widgets['info'].pop(count)
-                break
+            if not 'database' in dir(self) or not self.database:
+                self.draw_white_lines(color='red', force=True, width=3)
+                return
 
-        infowidget = INFOWidget(self.main.back, self, self.main, type='info_widget', database=self.database)
-        self.main.widgets['info'].append(infowidget)
+            for count, i in enumerate(self.main.widgets['info']):
+                if not i.database:
+                    continue
+
+                if i.database[0] == self.database[0]:
+                    i.close()
+                    self.main.widgets['info'].pop(count)
+                    break
+
+            infowidget = INFOWidget(self.main.back, self, self.main, type='info_widget', database=self.database)
+            self.main.widgets['info'].append(infowidget)
 
     def delete_box_of_details(self, all=True):
         """
@@ -915,6 +1668,10 @@ class INFOWidget(ComicWidget):
     def __init__(self, place, parent, main, type, database):
         super().__init__(place=place, main=main, type=type)
 
+        self.setFrameStyle(QtWidgets.QFrame.Box|QtWidgets.QFrame.Raised)
+        self.setLineWidth(1)
+        self.setMidLineWidth(2)
+
         self.parent = parent
         self.database = database
         self.activation_toggle(force=True, save=False)
@@ -952,6 +1709,7 @@ class INFOWidget(ComicWidget):
             cover = extract_from_zip_or_pdf(database=self.database)
             self.make_cover(cover_height=cover_height, coverfile=cover)
             self.cover.first_reize(cover_height=cover_height)
+            t.pos(self.cover, move=[5, 5])
             self.make_box_of_details(enhancefactor=3)
             t.pos(self.size_pages_label, move=[1, 0], width=self.size_pages_label.width() - 2)
 
@@ -1022,7 +1780,7 @@ class INFOWidget(ComicWidget):
             d = generate_type_init_dictionary(self)
             make_boxes_and_expand_frame(set1, dictionary=d)
             set_defaults(self, dictionary=d)
-            t.pos(set1, rightof=self.cover, x_margin=5)
+            t.pos(set1, after=self.cover, x_margin=5)
 
             return set1
 
@@ -1034,11 +1792,12 @@ class INFOWidget(ComicWidget):
                     self.page = page
 
                 def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-                    PAGE(main=self.main, database=self.parent.database, index=self.page)
+                    page = PAGE(main=self.main, database=self.parent.database, index=self.page)
+                    self.main.pages_container.append(page)
 
             def make_beginning_button(self):
                 read_beginning = ReadBTN(self, main=self.main, type='_read_start_btn', page=0)
-                t.pos(read_beginning, rightof=self.cover, x_margin=5, height=40, width=set1)
+                t.pos(read_beginning, after=self.cover, x_margin=5, height=40, width=set1)
                 t.style(read_beginning, background='black', color='gray')
                 read_beginning.setLineWidth(2)
                 read_beginning.setFrameShape(QtWidgets.QFrame.Box)
@@ -1049,7 +1808,7 @@ class INFOWidget(ComicWidget):
                 read_from = ReadBTN(self, main=self.main, type='_read_from_btn', page=current_page)
                 t.pos(read_from, coat=read_beginning)
                 t.pos(read_beginning, width=read_beginning.width() * 0.5 - 2)
-                t.pos(read_from, left=read_beginning.geometry().right() + 2, right=read_from)
+                t.pos(read_from, left=dict(right=read_beginning), right=read_from.geometry().right(), x_margin=2)
                 read_beginning.setText('OPEN PAGE 1')
                 size = t.correct_broken_font_size(read_beginning, maxsize=36)
                 t.style(read_beginning, font=str(size - 2) + 'pt')
@@ -1074,218 +1833,173 @@ class INFOWidget(ComicWidget):
                 return read_beginning, None
 
 
-
-
-        class FolderSpecial(FolderSettingsWidget):
-
-            #class BUTTON(GLOBALDeactivate, ExecutableLookCheckable):
-            class BUTTON(HighlightRadioBoxGroup):
-                def __init__(self, *args, **kwargs):
-                    super().__init__(*args, **kwargs)
-                    self.activation_toggle(force=False)
-
+        def make_local_path_widget(self):
+            class LocalPathLE(FolderSettingsAndGLobalHighlight):
                 def post_init(self):
-                    self.button.setMouseTracking(True)
-                    self.textlabel.setMouseTracking(True)
+                    t.pos(self.lineedit, left=self.button, right=self.lineedit.geometry().right())
 
-                    self.directives['activation'] = [
-                        dict(object=self.textlabel, color='white'),
-                        dict(object=self.button, background='cyan', color='cyan'),
-                    ]
+                    for i in [self.button, self._bframe, self.textlabel]:
+                        i.hide()
 
-                    self.directives['deactivation'] = [
-                        dict(object=self.textlabel, color='gray'),
-                        dict(object=self.button, background='darkCyan', color='darkCyan'),
-                    ]
+                    self.dir_pixel = []
+                    self.lineedit.textChanged.connect(self.text_changed)
 
-                def special(self):
-                    return True
+                    self.create_small_folder_pixles(path=self.database[DB.comics.local_path])
+                    loc = t.separate_file_from_folder(self.database[DB.comics.local_path])
+                    self.lineedit.setText(loc.full_path)
 
-                def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-                    if ev.button() == 1:
-                        self.button_clicked()
+                    if os.path.exists(self.database[DB.comics.local_path]):
+                        self.activation_toggle(force=True, save=False)
 
-                    elif ev.button() == 2:
-                        self.grand_parent.activation_toggle(force=False, save=False)
-                        self.grand_parent.rename_delete_widget()
-                        self.parent.close()
+                    else:
+                        self.activation_toggle(force=False, save=False)
 
-            class BUTTONRename(BUTTON):
+                class DELBTN(HighlightRadioBoxGroup):
+                    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                        if ev.button() == 1:
+                            if os.path.exists(self.database[DB.comics.local_path]):
+                                os.remove(self.database[DB.comics.local_path])
 
-                def button_clicked(self):
+                            sqlite.execute('delete from comics where id is (?)', self.database[0])
+                            self.parent.parent.close()
+
+                class CANCELBTN(HighlightRadioBoxGroup):
+                    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                        if ev.button() == 1:
+                            self.parent.confirm_delete.close()
+                            self.parent.cancel_delete.close()
+                            del self.parent.confirm_delete
+                            del self.parent.cancel_delete
+
+                def delete_button_mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                    if 'cancel_delete' in dir(self):
+                        return
+
+                    def make_confirm_button(self):
+                        self.confirm_delete = self.DELBTN(self.lineedit, type='_confdel', global_signal=global_signal)
+                        self.confirm_delete.parent = self.parent
+                        self.confirm_delete.database = self.database
+                        t.style(self.confirm_delete, background=TXT_DARKTRANS, color='darkGray')
+
+                        self.confirm_delete.directives['activation'] = [
+                            dict(object=self.confirm_delete, background='rgb(200,50,50)', color='white')
+                        ]
+                        self.confirm_delete.directives['deactivation'] = [
+                            dict(object=self.confirm_delete, background=TXT_DARKTRANS, color='darkGray')
+                        ]
+
+                        self.confirm_delete = t.pos(
+                            self.confirm_delete, inside=self.lineedit, width=self.lineedit.width() * 0.5)
+
+                        self.confirm_delete.setText('DELETE THIS FILE FROM YOUR COMPUTER')
+                        self.confirm_delete.setAlignment(QtCore.Qt.AlignVCenter|QtCore.Qt.AlignHCenter)
+                        t.correct_broken_font_size(self.confirm_delete)
+
+                    def make_cancel_button(self):
+
+                        self.cancel_delete = self.CANCELBTN(self.lineedit, type='_confren', global_signal=global_signal)
+                        t.style(self.cancel_delete, background=TXT_DARKTRANS, color='darkGray')
+
+                        self.cancel_delete.directives['activation'] = [
+                            dict(object=self.cancel_delete, background='lightBlue', color='black')
+                        ]
+                        self.cancel_delete.directives['deactivation'] = [
+                            dict(object=self.cancel_delete, background=TXT_DARKTRANS, color='darkGray')
+                        ]
+
+                        self.cancel_delete = t.pos(self.cancel_delete, inside=self.lineedit)
+                        self.cancel_delete = t.pos(
+                            self.cancel_delete, left=dict(right=self.confirm_delete), width=self.confirm_delete)
+
+                        self.cancel_delete.setText("I'VE CHANGED MY MIND!")
+                        self.cancel_delete.setAlignment(QtCore.Qt.AlignVCenter|QtCore.Qt.AlignHCenter)
+                        self.cancel_delete.parent = self
+                        t.correct_broken_font_size(self.cancel_delete)
+
+                    make_confirm_button(self)
+                    make_cancel_button(self)
+
+                def save_button_mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+
                     def some_error(self):
-                        self.slaves_can_alter = False
-                        self.button.setText('ERROR')
-                        t.correct_broken_font_size(self.button)
-                        t.style(self.button, background='red', color='black')
-                        self.grand_parent.text_changed()
+                        self.save_button.slaves_can_alter = False
+                        t.style(self.save_button, background='red', color='black')
+                        self.save_button.setText('ERROR')
 
                     self.database = sqlite.refresh_db_input(table='comics', db_input=self.database)
 
+
                     if self.database and not os.path.exists(self.database[DB.comics.local_path]):
                         some_error(self)
-                        return False
+                        return
 
-                    text = self.grand_parent.lineedit.text().strip()
+                    text = self.lineedit.text().strip()
 
                     if os.path.exists(text):
                         some_error(self)
-                        return False
+                        return
 
                     try: shutil.move(self.database[DB.comics.local_path], text)
                     except:
                         some_error(self)
-                        return False
+                        return
 
                     if not os.path.exists(text) or os.path.exists(self.database[DB.comics.local_path]):
                         some_error(self)
-                        return False
+                        return
 
                     sqlite.execute('update comics set local_path = (?) where id is (?)', (text, self.database[0],))
                     self.database = sqlite.refresh_db_input(table='comics', db_input=self.database)
-                    self.grand_parent.database = self.database
+                    self.text_changed()
 
-                    self.button.setText('DONE!')
-                    t.correct_broken_font_size(self.button)
-                    t.style(self.button, background='green', color='black')
-                    self.grand_parent.text_changed()
+                def text_changed(self):
+                    text = self.lineedit.text().strip()
+                    local_path = self.database[DB.comics.local_path]
 
-            class BUTTONDelete(BUTTON):
-                def button_clicked(self):
-                    def some_error(self):
-                        self.slaves_can_alter = False
-                        self.button.setText('ERROR')
-                        t.correct_broken_font_size(self.button)
-                        t.style(self.button, background='red', color='black')
-                        self.grand_parent.text_changed()
+                    if self.text_path_exists() and text == local_path:
+                        t.style(self.lineedit, background='black', color='white')
+                        self.manage_save_button(delete=True)
+                        self.manage_delete_button(create=True, text="")
+                        self.delete_button.mousePressEvent = self.delete_button_mousePressEvent
+                        self.delete_button.setToolTip('PERMANENTLY DELETE FILE')
 
-                    def some_success(self):
-                        sqlite.execute('delete from comics where id is (?)', self.database[0])
-                        self.button.setText('DONE!')
-                        t.correct_broken_font_size(self.button)
-                        t.style(self.button, background='green', color='black')
+                    elif not self.text_path_exists() and text != local_path:
 
-                    self.database = sqlite.refresh_db_input(table='comics', db_input=self.database)
+                        if 'save_button' in dir(self) and not self.save_button.slaves_can_alter:
+                            self.manage_save_button(delete=True)
 
-                    if not self.database:
-                        some_error(self)
-                        return False
+                        self.manage_save_button(create=True, text='RENAME')
+                        self.save_button.mousePressEvent = self.save_button_mousePressEvent
+                        t.style(self.lineedit, background='black', color='gray')
 
-                    path = self.database[DB.comics.local_path]
+                    else:
+                        self.manage_save_button(delete=True)
+                        t.style(self.lineedit, background='black', color='gray')
 
-                    if not os.path.exists(path):
-                        some_error(self)
-                        return False
-
-                    try: os.remove(path)
-                    except:
-                        some_error(self)
-                        return False
-
-                    if os.path.exists(path):
-                        some_error(self)
-                        return False
-
-                    some_success(self)
-
-            def rename_delete_widget(self, ev=None):
-                if 'delete_rename' in dir(self) or ev == None:
-                    self.delete_rename.close()
-                    del self.delete_rename
-
-                    self.special()
-                    return
-
-                def generate_del_rename_init_dictionary(self):
-                    d = [
-                        dict(text='DELETE FILE',
-                             widget=self.BUTTONDelete,
-                             post_init=True,
-                             button_width_factor=2.5,
-                             button_text='', button_color='darkCyan', text_color='gray',
-
-                             kwargs=dict(
-                                 type='_info_delete',
-                                 global_signal=global_signal,
-                                 extravar=dict(
-                                     database=self.database,
-                                     grand_parent=self,
-                                 ))),
-
-                        dict(text='RENAME FILE',
-                             widget=self.BUTTONRename,
-                             post_init=True,
-                             button_width_factor=2.5,
-                             button_text='', button_color='darkCyan', text_color='gray',
-
-                             kwargs=dict(
-                                 type='_info_rename',
-                                 global_signal=global_signal,
-                                 extravar=dict(
-                                     database=self.database,
-                                     grand_parent=self,
-                                 ))),
-                    ]
-                    return d
-
-                t.style(self.button, background='lightGreen')
-
-                set = UniversalSettingsArea(self.parent, extravar=dict(fortifyed=True, database=self.database))
-
-                d = generate_del_rename_init_dictionary(self)
-                set.make_this_into_checkable_buttons(d, toolsheight=20, canvaswidth=220)
-                t.pos(set, left=ev.x(), above=self.parent.local_path.geometry().top())
-
-                self.delete_rename = set
-
-            def special(self):
-                text = self.lineedit.text().strip()
-
-                if text == self.database[DB.comics.local_path]:
-                    t.style(self.button, background='green')
-                    self.setToolTip('All seems good')
-
-                elif not os.path.exists(text):
-                    t.style(self.button, background='orange')
-                    self.setToolTip('No conflict, rename?')
-
-                elif os.path.exists(text):
-                    t.style(self.button, background='gray')
-                    self.setToolTip('Filename conflict')
-
-                else:
-                    t.style(self.button, background='red')
-                    self.setToolTip('...')
-
-                return True
-
-            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-                self.activation_toggle(save=False)
-                self.rename_delete_widget(ev)
-
-        def make_local_path_widget(self):
-
+            set2 = UniversalSettingsArea(self, extravar=dict(fortifyed=True))
             e = [
-                dict(text='LOCAL PATH', widget=FolderSpecial,
+                dict(text='LOCAL PATH',
+                     widget=LocalPathLE,
                      kwargs=dict(
                          type='_info_local_path',
+                         global_signal=global_signal,
+                         multiple_folders=False,
                          extravar=dict(
                              database=self.database,
-                             parent=self,
+                             parent=set2,
                          )))
             ]
 
-            set2 = UniversalSettingsArea(self, extravar=dict(fortifyed=True))
-
             b = set2.make_this_into_folder_settings(e, extend_le_til=set1.geometry().right())
-            t.pos(set2, left=self, below=self, y_margin=5)
+            x_margin = self.lineWidth() + self.midLineWidth() + 2
+            t.pos(set2, left=self, x_margin=x_margin, top=dict(bottom=self), y_margin=5)
 
             le = b.widgets[0]['le']
             le.setText(self.database[DB.comics.local_path])
             t.correct_broken_font_size(le)
             set2.expand_me(set2.blackgrays)
 
-            self.local_path = set2
+            self.local_path_widget = e[0]['label']
             return set2
 
         def make_convert_from_pdf_button(self):
@@ -1311,6 +2025,12 @@ class INFOWidget(ComicWidget):
                         dict(object=self.textlabel, color='gray'),
                         dict(object=self.button, background='darkCyan', color='black'),
                     ]
+                    t.pos(self.textlabel, inside=self)
+
+                def mute_label(self):
+                    self.textlabel.setText("ALL FILES ARE WEBP")
+                    t.pos(self.textlabel, inside=self)
+                    self.button_clicked = lambda: 1 + 1
 
                 def special(self):
                     return True
@@ -1392,6 +2112,9 @@ class INFOWidget(ComicWidget):
 
                         self.database = sqlite.refresh_db_input('comics', self.database)
                         self.pdf_convertion_signal.finished.emit()
+                        self.mute_label()
+                        self.local_path_widget.database = self.database
+                        self.local_path_widget.lineedit.setText(self.database[DB.comics.local_path])
 
                 def setup_signal(self):
                     """
@@ -1408,6 +2131,7 @@ class INFOWidget(ComicWidget):
                         self.running_job = None
                         return
 
+                    t.pos(self.textlabel, left=dict(right=self.button), right=self, x_margin=self.lineWidth())
                     signalname = self.setup_signal()
                     self.start_job(signalgroup=signalname)
 
@@ -1426,6 +2150,7 @@ class INFOWidget(ComicWidget):
                     text='CONVERT PDF TO CBZ (webp)',
                     widget=ConvertPDF,
                     post_init=True,
+                    alignment=True,
                     button_width_factor=2.5,
                     button_text='', button_color='darkCyan', text_color='gray',
                     kwargs=dict(
@@ -1433,8 +2158,7 @@ class INFOWidget(ComicWidget):
                         global_signal=global_signal,
                         extravar=dict(
                             database=self.database,
-
-
+                            local_path_widget=self.local_path_widget,
                         ),
                     ))
             ]
@@ -1473,6 +2197,40 @@ class INFOWidget(ComicWidget):
                         dict(object=self.textlabel, color='gray'),
                         dict(object=self.button, background='darkCyan', color='black'),
                     ]
+                    if not self.mute_label_refresh_local_path():
+                        t.pos(self.textlabel, inside=self)
+
+                def mute_label_refresh_local_path(self):
+                    if not self.webp_convertable_files():
+                        self.textlabel.setText("ALL FILES ARE WEBP")
+                        t.pos(self.textlabel, inside=self)
+                        self.button_clicked = lambda: 1+1
+                        self.local_path_widget.database = self.database
+                        self.local_path_widget.lineedit.setText(self.database[DB.comics.local_path])
+                        return True
+
+                def webp_convertable_files(self):
+                    self.database = sqlite.refresh_db_input('comics', self.database)
+
+                    if not self.database[DB.comics.file_contents]:
+                        fa = FileArchiveManager(database=self.database, autoinit=False)
+                        fa.make_database(path=self.database[DB.comics.local_path])
+                        database = fa.database
+                        if not database[DB.comics.file_contents]:
+                            return -1
+                        else:
+                            self.database = database
+
+                    fd = pickle.loads(self.database[DB.comics.file_contents])
+                    if 'good_files' not in fd or not fd['good_files']:
+                        return -1
+
+                    for i in fd['good_files']:
+                        loc = t.separate_file_from_folder(i)
+                        if loc.ext.lower() != 'webp':
+                            return True
+
+                    return False
 
                 def special(self):
                     return True
@@ -1567,12 +2325,14 @@ class INFOWidget(ComicWidget):
                     if both_files_are_cbz(self):
                         self.database = sqlite.refresh_db_input('comics', self.database)
                         self.webp_convertion_signal.finished.emit()
+                        self.mute_label_refresh_local_path()
                         return True
 
                     else: # they'll never share the same space
                         if both_files_are_different_extensions(self):
                             self.database = sqlite.refresh_db_input('comics', self.database)
                             self.webp_convertion_signal.finished.emit()
+                            self.mute_label_refresh_local_path()
                             return True
 
 
@@ -1585,29 +2345,6 @@ class INFOWidget(ComicWidget):
                     self.webp_convertion_signal = t.signals(signalname)
                     self.webp_convertion_signal.file_delivery.connect(self.conversion_success)
                     return signalname
-
-                def webp_convertable_files(self):
-                    self.database = sqlite.refresh_db_input('comics', self.database)
-
-                    if not self.database[DB.comics.file_contents]:
-                        fa = FileArchiveManager(database=self.database, autoinit=False)
-                        fa.make_database(path=self.database[DB.comics.local_path])
-                        database = fa.database
-                        if not database[DB.comics.file_contents]:
-                            return -1
-                        else:
-                            self.database = database
-
-                    fd = pickle.loads(self.database[DB.comics.file_contents])
-                    if 'good_files' not in fd or not fd['good_files']:
-                        return -1
-
-                    for i in fd['good_files']:
-                        loc = t.separate_file_from_folder(i)
-                        if loc.ext.lower() != 'webp':
-                            return True
-
-                    return False
 
                 def button_clicked(self):
                     def quick_error(self):
@@ -1627,6 +2364,7 @@ class INFOWidget(ComicWidget):
                         quick_error(self)
                         return False
 
+                    t.pos(self.textlabel, left=dict(right=self.button), right=self, x_margin=self.lineWidth())
                     signalname = self.setup_signal()
                     self.start_job(signalgroup=signalname)
 
@@ -1643,6 +2381,7 @@ class INFOWidget(ComicWidget):
                     text='CONVERT CBx TO WEBP (cbz)',
                     widget=ConvertToWEBP,
                     post_init=True,
+                    alignment=True,
                     button_width_factor=2.5,
                     button_text='', button_color='darkCyan', text_color='gray',
                     kwargs=dict(
@@ -1650,6 +2389,7 @@ class INFOWidget(ComicWidget):
                         global_signal=global_signal,
                         extravar=dict(
                             database=self.database,
+                            local_path_widget=self.local_path_widget,
                         ),
                     ))
             ]
@@ -1665,6 +2405,151 @@ class INFOWidget(ComicWidget):
             set4.make_this_into_checkable_buttons(d, toolsheight=20, linewidth=1)
             return set4
 
+        def make_small_page_squares(self, canvas, start_from=0):
+            for count in range(len(canvas.squares)-1,-1,-1):
+                canvas.squares[count].close()
+                canvas.squares.pop(count)
+
+            self.database = sqlite.refresh_db_input('comics', self.database)
+            good_files = FileArchiveManager.get_filecontents(database=self.database)
+            if good_files:
+                pagecount = len(good_files)
+            else:
+                loc = t.separate_file_from_folder(self.database[DB.comics.local_path])
+                pagecount = check_for_pdf_assistance(pdf_file=loc.full_path, pagecount=True)
+
+            if not pagecount:
+                return False
+
+            if start_from < 0:
+                start_from = 0
+            elif start_from >= pagecount:
+                start_from = pagecount
+
+            class PageSquare(GLOBALDeactivate):
+                def __init__(self, place, count, database, *args, **kwargs):
+                    super().__init__(place=place, *args, **kwargs)
+                    self.pagecount = count
+                    self.database = database
+                    self.setLineWidth(1)
+                    self.setAlignment(QtCore.Qt.AlignHCenter|QtCore.Qt.AlignVCenter)
+                    self.setFrameShape(QtWidgets.QFrame.Box)
+                    self.setText(str(self.pagecount + 1))
+                    self.default_event_colors()
+                    self.signal_global_gui_change(directive='deactivation')
+
+                def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                    if ev.button() == 1:
+                        page = PAGE(main=self.main, database=self.database, index=self.pagecount)
+                        self.main.pages_container.append(page)
+
+                    elif ev.button() == 2:
+                        if self == self.parent.squares[0] and self.pagecount != 0:
+                            self.make_small_page_squares(
+                                self=self.infowidget, canvas=self.canvas, start_from=self.pagecount-50)
+
+                        elif self == self.parent.squares[-1] and self.pagecount+1 != self.total_pagecount:
+                            self.make_small_page_squares(
+                                self=self.infowidget, canvas=self.canvas, start_from=self.pagecount+1)
+
+            class Unread(PageSquare):
+                def default_event_colors(self):
+                    self.setToolTip("seems like you have'nt viewed this page yet")
+
+                    self.directives['activation'] = [
+                        dict(object=self, background=UNREAD_B_1, color=UNREAD_C_1)]
+                    self.directives['deactivation'] = [
+                        dict(object=self, background=UNREAD_B_0, color=UNREAD_C_0)]
+
+            class Bookmarked(PageSquare):
+                def default_event_colors(self):
+                    self.setToolTip("BOOKMARK HERE!")
+
+                    self.directives['activation'] = [
+                        dict(object=self, background=BOOKMARKED_B_1, color=BOOKMARKED_C_1)]
+                    self.directives['deactivation'] = [
+                        dict(object=self, background=BOOKMARKED_B_0, color=BOOKMARKED_C_0)]
+
+            class Current(PageSquare):
+                def default_event_colors(self):
+                    self.setToolTip("this is the highest pagenumber you've opened so far")
+
+                    self.directives['activation'] = [
+                        dict(object=self, background=CURRENT_B_1, color=CURRENT_C_1)]
+                    self.directives['deactivation'] = [
+                        dict(object=self, background=CURRENT_B_0, color=CURRENT_C_0)]
+
+            class Read(PageSquare):
+                def default_event_colors(self):
+                    self.setToolTip("based on the highest number of opened pages, we assume you've read preceeding pages")
+
+                    self.directives['activation'] = [
+                        dict(object=self, background=READ_B_1, color=READ_C_1)]
+                    self.directives['deactivation'] = [
+                        dict(object=self, background=READ_B_0, color=READ_C_0)]
+
+            eachwidth = set1.width() / 10
+            current = self.database[DB.comics.current_page] or 0
+
+            if self.database[DB.comics.bookmarks]:
+                bookmarks = pickle.loads(self.database[DB.comics.bookmarks])
+            else:
+                bookmarks = {}
+
+            check = 10
+            for count in range(start_from, start_from+50):
+
+                if count >= pagecount:
+                    break
+
+                elif count in bookmarks:
+                    squareclass = Bookmarked
+
+                elif count == current:
+                    squareclass = Current
+
+                elif count < current:
+                    squareclass = Read
+
+                else:
+                    squareclass = Unread
+
+                square = squareclass(canvas,
+                                     type='_page_square' + str(count),
+                                     count=count,
+                                     main=self.parent.main,
+                                     database=self.database,
+                                     extravar=dict(
+                                         make_small_page_squares=make_small_page_squares,
+                                         canvas=canvas,
+                                         infowidget=self,
+                                         total_pagecount=pagecount,
+                                     ),
+                                     )
+
+                if not canvas.squares:
+                    t.pos(square, size=[eachwidth-2,eachwidth-2])
+                else:
+                    if len(canvas.squares) == check:
+                        check += 10
+                        t.pos(square, coat=canvas.squares[0], below=canvas.squares[-1], y_margin=2, left=self)
+                    else:
+                        t.pos(square, coat=canvas.squares[0], after=canvas.squares[-1], x_margin=2)
+
+                t.correct_broken_font_size(square)
+                canvas.squares.append(square)
+
+            return True
+
+        def make_small_page_squares_canvas(self):
+            set5 = t.pos(new=self)
+            set5.squares = []
+
+            if not make_small_page_squares(self, canvas=set5, start_from=0):
+                return set5.close()
+
+            expand_now(set5, set5.squares)
+            return set5
 
         def expand_now(self, expandlater):
             for i in expandlater:
@@ -1693,6 +2578,11 @@ class INFOWidget(ComicWidget):
         if set4:
             t.pos(set4, below=set3 or set1, y_margin=5, left=set1, width=set1)
             expandlater.append(set4)
+
+        set5 = make_small_page_squares_canvas(self)
+        if set5:
+            t.pos(set5, below=set4 or set3 or set1, y_margin=5)
+            expandlater.append(set5)
 
         expandlater.append(set1)
         expandlater.append(set2)

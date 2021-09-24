@@ -4,11 +4,11 @@ from PyQt5.QtGui             import QKeySequence
 from PyQt5.QtWidgets         import QShortcut
 from bscripts.comic_drawing  import ComicWidget
 from bscripts.database_stuff import DB, sqlite
-from bscripts.file_handling import scan_for_new_comics
+from bscripts.file_handling  import scan_for_new_comics
 from bscripts.tricks         import tech as t
-from bscripts.widgets        import TOOLBatch, TOOLDev
-from bscripts.widgets        import TOOLMaxiMini, TOOLQuit, TOOLReading
-from bscripts.widgets        import TOOLSearch, TOOLSettings, TOOLSort,TOOLRank,TOOLWEBP
+from bscripts.widgets        import TOOLBatch, TOOLDev, TOOLMaxiMini, TOOLQuit
+from bscripts.widgets        import TOOLRank, TOOLReading, TOOLSearch
+from bscripts.widgets        import TOOLSettings, TOOLSort, TOOLWEBP
 import os
 import sys
 import time
@@ -20,6 +20,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         self.setWindowTitle('Comicreader Longsnabel v0.0.1')
         t.style(self, name='main')
         self.widgets = dict(main=[], info=[])
+        self.pages_container = []
         self.draw_list_comics = []
         # TRIGGERS >
         self.draw_more_from_comiclist = QShortcut(QKeySequence(Qt.Key_Space), self)
@@ -35,8 +36,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         self.show()
 
         self.create_tool_buttons()
-        self.devmode(sleep=20)
-
+        self.devmode(sleep=600)
 
     def devmode(self, sleep):
         if not 'devmode' in sys.argv:
@@ -88,12 +88,10 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                 sys.exit()
 
         print("STARTING TIMER:", sleep, 'seconds')
-        #self.le_primary_search.setText("adult collection")
+        # self.le_primary_search.setText("adult collection")
         self.search_comics()
         #import_db()
         t.start_thread(dum, finished_function=kill, name="dfucker")
-        # from bscripts.file_handling import concurrent_cbx_to_webp_convertion
-        # t.start_thread(concurrent_cbx_to_webp_convertion)
 
     def create_tool_buttons(self):
         """
@@ -127,9 +125,9 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             else:
                 prelabel = dlist[count - 1]['label']
                 if count == 1:
-                    t.pos(label, coat=prelabel, rightof=self.le_primary_search, x_margin=1)
+                    t.pos(label, coat=prelabel, after=self.le_primary_search, x_margin=1)
                 else:
-                    t.pos(label, coat=prelabel, rightof=prelabel, x_margin=1)
+                    t.pos(label, coat=prelabel, after=prelabel, x_margin=1)
                     t.pos(label, width=label.width() * d['widthmultiplyer'])
 
             t.set_my_pixmap(label)
@@ -152,8 +150,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
     def dummy(self, sleep=0):
         if sleep and type(sleep) == int:
             time.sleep(sleep)
-        else:
-            return True
+
 
     def save_search_query(self):
         text = self.le_primary_search.text().strip()
@@ -323,7 +320,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
         def create_new_batch_status_label(self):
             if 'batch_status' not in dir(self):
-                self.batch_status = t.pos(new=self, coat=self.batcher, rightof=self.batcher)
+                self.batch_status = t.pos(new=self, coat=self.batcher, after=self.batcher)
 
         def deal_with_failed(self, failed):
             if failed:

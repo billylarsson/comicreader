@@ -1,14 +1,18 @@
 from PyQt5                        import QtCore, QtGui, QtWidgets
-from script_pack.settings_widgets import CheckableLCD, CheckableWithSignal, CheckBoxSignalGroup,CheckableWidget,HighlightRadioBoxGroup
-from script_pack.settings_widgets import ExecutableLookCheckable, GOD
-from script_pack.settings_widgets import UniversalSettingsArea
-from bscripts.file_handling        import generate_cover_from_image_file
-from bscripts.file_handling        import hash_all_unhashed_comics
-from bscripts.file_handling        import scan_for_new_comics
-from bscripts.tricks               import tech as t
-from PyQt5.QtCore   import QPoint, Qt
-import os, sys
+from PyQt5.QtCore                 import QPoint
+from bscripts.file_handling       import generate_cover_from_image_file
+from bscripts.file_handling       import hash_all_unhashed_comics
+from bscripts.file_handling       import scan_for_new_comics
+from bscripts.tricks              import tech as t
+from script_pack.settings_widgets import CheckBoxSignalGroup
+from script_pack.settings_widgets import CheckableAndGlobalHighlight
+from script_pack.settings_widgets import CheckableLCD, ExecutableLookCheckable
+from script_pack.settings_widgets import FolderSettingsAndGLobalHighlight
 from script_pack.settings_widgets import GLOBALDeactivate
+from script_pack.settings_widgets import HighlightRadioBoxGroup
+from script_pack.settings_widgets import UniversalSettingsArea
+import os
+import sys
 
 TEXTSIZE = 14
 
@@ -108,7 +112,7 @@ class TOOLSearch(POPUPTool):
             self.main.le_primary_search = QtWidgets.QLineEdit(self.main)
             search_widget_settings(self)
             self.main.le_primary_search.show()
-            t.pos(self.main.le_primary_search, coat=self, width=300, rightof=self, x_margin=1)
+            t.pos(self.main.le_primary_search, coat=self, width=300, after=self, x_margin=1)
         else:
             self.main.le_primary_search.hide()
 
@@ -133,51 +137,83 @@ class TOOLSettings(POPUPTool):
         settingsboxes inside that area and places them around for
         more indepth about the how-to see UniversalSettingsArea
         """
-        class FillRow(CheckBoxSignalGroup):
+        class FillRowSqueeze(CheckBoxSignalGroup, CheckableAndGlobalHighlight):
             def special(self):
+                if self.type == 'squeeze_mode':
+                    return False
+
                 if not t.config('squeeze_mode') and self.activated:
                     t.style(self.button, background='orange')
                     return True
 
             def checkgroup_signal(self, signal):
-                if signal == 'squeeze_mode':
-                    self.activation_toggle(force=self.activated)
+                if self.type == 'fill_row' and signal == 'squeeze_mode':
+                    self.activation_toggle(force=self.activated, save=False)
+
+            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                if ev.button() == 1:
+                    self.activation_toggle()
+                    self.signalgroup.checkgroup_master.emit(self.type)
+
+        class PDFPoppler(FolderSettingsAndGLobalHighlight):
+            def special(self):
+                if self.activated:
+                    rv = t.config(self.type, curious=True)
+
+                    if rv and type(rv) == list:
+                        t.style(self.button, background='green')
+                    else:
+                        t.style(self.button, background='orange')
+                else:
+                    t.style(self.button, background='gray')
+
+                return True
+
+            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                if ev.button() == 1:
+                    self.activation_toggle()
 
         dict_with_checkables = [
             dict(
                 text="SHOW COMICS", textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='else excluding files marked as Comics',
                 kwargs = dict(type='show_comics'),
             ),
             dict(
                 text='SHOW MAGAZINES', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='else excluding files marked as Magazines',
                 kwargs = dict(type='show_magazines'),
 
             ),
             dict(
                 text='SHOW NSFW', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='else excluding files marked as porn',
                 kwargs = dict(type='show_NSFW')
             ),
             dict(
                 text='SQUEEZE MODE', textsize=TEXTSIZE,
-                widget=CheckableWithSignal,
+                widget=FillRowSqueeze, post_init=True,
                 tooltip='contract/expand covers until they claim all space in full rows (looks good, but only tries to honor aspekt ratio)',
                 kwargs = dict(signalgroup='squeeze_fill_group', type='squeeze_mode'),
             ),
             dict(
                 text='FILLING ROW', textsize=TEXTSIZE,
-                widget=FillRow, tooltip='exceeding limit until row is full, requires Squeeze Mode (looks better)',
+                widget=FillRowSqueeze, post_init=True,
+                tooltip='exceeding limit until row is full, requires Squeeze Mode (looks better)',
                 kwargs = dict(signalgroup='squeeze_fill_group', type='fill_row'),
             ),
             dict(
                 text='COVER BLOB', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='stores thumbnails into database (100x faster loading speed next time you browse the same item at the cost of increasing local databse by ~25kb per item (depending on thumbnail size))',
                 kwargs = dict(type='cover_blob'),
             ),
             dict(
                 text='COVERS PRE-DRAW', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='show covers when prepositioning covers (takes a millisecond per item on a good computer)',
                 kwargs = dict(type='pre_squeeze')
             ),
@@ -196,34 +232,42 @@ class TOOLSettings(POPUPTool):
             dict(
                 text='COMICS FOLDER', textsize=TEXTSIZE,
                 tooltip='CBZ files',
+                widget=FolderSettingsAndGLobalHighlight,
                 kwargs = dict(type='comic_folder')),
             dict(
                 text='NSFW FOLDER', textsize=TEXTSIZE,
                 tooltip='found a mouse ...',
+                widget=FolderSettingsAndGLobalHighlight,
                 kwargs = dict(type='NSFW_folder')),
             dict(
                 text='MAGAZINES', textsize=TEXTSIZE,
+                widget=FolderSettingsAndGLobalHighlight,
                 tooltip='regular magazines folder ...',
                 kwargs = dict(type='magazine_folder')),
             dict(
                 text='CACHE FOLDER', textsize=TEXTSIZE,
+                widget=FolderSettingsAndGLobalHighlight,
                 tooltip='must exist! (else fallback to systems-tmp)',
-                kwargs = dict(type='cache_folder')),
+                kwargs = dict(type='cache_folder', multiple_folders=False)),
         ]
 
         dict_with_cover_details = [
             dict(
                 text='RATING', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 kwargs = dict(type='show_ratings')),
             dict(
                 text='READING PROGRESS', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip="shows a progress bar from left to right according to the current highest pagenumber you've opened",
                 kwargs = dict(type='show_reading_progress')),
             dict(
                 text='PAGES AND SIZE', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 kwargs = dict(type='show_page_and_size')),
             dict(
                 text='UNTAGGED FLAG', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='if we cannot find a comicvine id with this file, a small square is positioned in the upper right corner indicating that',
                 kwargs = dict(type='show_untagged_flag')
             )
@@ -231,14 +275,15 @@ class TOOLSettings(POPUPTool):
 
         dict_with_pdf_things = [
             dict(
-                text = 'PDF SUPPORT', textsize=TEXTSIZE,
+                text = 'PDF SUPPORT', textsize=TEXTSIZE, widget=PDFPoppler,
                 tooltip = "this may not be a plesent experience since it depends on poppler path. if your'e on windows, i'd say you doomed if you dont know what you're doing and i suggest you leave this in the red",
-                kwargs = dict(type='pdf_support')),
+                kwargs = dict(type='pdf_support', multiple_folders=False)),
         ]
 
         dict_with_autoupdate = [
             dict(
                 text = 'LIBRARY AUTOUPDATE', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip = "autoupdates on start and when you close settings panel",
                 kwargs = dict(type='autoupdate_library')),
         ]
@@ -255,11 +300,13 @@ class TOOLSettings(POPUPTool):
         dict_md5_comic = [
             dict(
                 text='HASH MD5 FROM NEW FILES', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='first time an item is to be shown to user an MD5 checksum is initiated and stored into database, this is conveniet when keeping track of multiple files and sharing ratings with friends',
                 kwargs = dict(type='md5_files')),
 
             dict(
                 text='EXTRACT COMIC ID FROM ZIP', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='searches the file contents for comicvine id (comictagger)',
                 kwargs = dict(type='comictagger_file'))
         ]
@@ -279,14 +326,14 @@ class TOOLSettings(POPUPTool):
         header = self.main.settings.make_header(title='SETTINGS')
 
         t.pos(blackgray2, below=blackgray1, y_margin=10)
-        t.pos(blackgray6, rightof=blackgray1, x_margin=10)
+        t.pos(blackgray6, after=blackgray1, x_margin=10)
         t.pos(blackgray3, below=blackgray6, left=blackgray6, y_margin=10)
         t.pos(blackgray4, below=blackgray2, y_margin=10)
         t.pos(blackgray5, left=blackgray3, below=blackgray3, y_margin=10)
         t.pos(blackgray8, left=blackgray5, below=blackgray5, y_margin=10)
         t.pos(blackgray7, below=blackgray8, y_margin=10, left=blackgray8)
 
-        t.pos(header, right=blackgray3, above=blackgray6.geometry().bottom())
+        t.pos(header, right=blackgray3, bottom=blackgray6)
 
         self.main.settings.expand_me(self.main.settings.blackgrays)
 

@@ -17,7 +17,7 @@ import sys
 import tempfile
 import time
 import traceback
-
+import uuid
 
 default_dict = dict(
     settings=dict(
@@ -36,9 +36,583 @@ default_dict = dict(
     images=dict()
 )
 
+
+class DIRECTPOSITION:
+    @staticmethod
+    def digit(value):
+        if type(value) == int or type(value) == float:
+            return True
+
+    @staticmethod
+    def set_hw(widget, w, h):
+        widget.resize(int(w), int(h))
+
+    @staticmethod
+    def set_geo(widget, x, y, w, h):
+        widget.setGeometry(int(x), int(y), int(w), int(h))
+
+    @staticmethod
+    def extra(**kwargs):
+        """
+        ie: extra(dict(y_margin=kwgs))
+        returns y_margin if such key are present
+        :param kwargs: dictionary[key] = all_kwargs_from_parent
+        :return: the value or 0
+        """
+        if not kwargs:
+            return 0
+
+        for master_key, slave_list in kwargs.items():
+
+            for orders in slave_list:
+
+                for k,v in orders.items():
+
+                    if k == master_key:
+                        return v
+
+        return 0
+
+    @staticmethod
+    def width(widget, args, kwgs):
+
+        if POS.digit(args):
+            w = args
+            h = widget.height()
+        else:
+            w = args.width()
+            h = widget.height()
+
+        POS.set_hw(widget, w + POS.extra(add=kwgs), h)
+
+    @staticmethod
+    def height(widget, args, kwgs):
+
+        if POS.digit(args):
+            w = widget.width()
+            h = args
+        else:
+            w = widget.width()
+            h = args.height()
+
+        POS.set_hw(widget, w, h + POS.extra(add=kwgs))
+
+    @staticmethod
+    def size(widget, args, kwgs):
+        """
+        :param args: list/tuple with len(2) or widget
+        """
+        if type(args) == list or type(args) == tuple:
+            w = args[0]
+            h = args[1]
+
+        else:
+            w = args.width()
+            h = args.height()
+
+        POS.set_hw(widget, w + POS.extra(add=kwgs), h + POS.extra(add=kwgs))
+
+    @staticmethod
+    def inside(working_widget, parent, kwgs):
+        """
+        you can "coat" a widget that resides within its parent and
+        using margins while doing so, but you cannot "coat" parent
+        :param parent: must be a widget
+        """
+        margin = POS.extra(margin=kwgs)
+        x, y = 0 + margin, 0 + margin
+        w = parent.width() - margin * 2
+        h = parent.height() - margin * 2
+        POS.set_geo(working_widget, x,y,w,h)
+
+    @staticmethod
+    def coat(working_widget, sister_widget, kwgs):
+        """
+        for two widgets that share the same parent you can coat one ontop
+        the other to get their exact cordinates, this is very suitable.
+        """
+        margin = POS.extra(margin=kwgs)
+        x = sister_widget.geometry().left() + margin
+        y = sister_widget.geometry().top() + margin
+        w = sister_widget.width() - margin * 2
+        h = sister_widget.height() - margin * 2
+        POS.set_geo(working_widget, x, y, w, h)
+
+    @staticmethod
+    def top(widget, args, kwgs):
+        """
+        read fn:left for same logic, basically if bottom is represented in kwgs its performed
+        here as well meaning widget at will can stretch or shrink to reach bottom-destination
+        """
+        if not POS.digit(args):
+            if type(args) == dict:
+                if next(iter(args)) == 'top':
+                    args = args['top'].geometry().top()
+                else:
+                    args = args['bottom'].geometry().bottom() + 1
+            else:
+                args = args.geometry().top()
+
+        y_margin = POS.extra(y_margin=kwgs)
+
+        x = widget.geometry().left()
+        y = args + y_margin
+        w = widget.width()
+        h = widget.height()
+
+        POS.set_geo(widget, x, y ,w, h)
+
+        bottom = POS.extra(bottom=kwgs)
+
+        if bottom:
+
+            if not POS.digit(bottom):
+
+                if type(bottom) == dict:
+                    if next(iter(bottom)) == 'bottom':
+                        bottom = bottom['bottom'].geometry().bottom()
+                    else:
+                        bottom = bottom['top'].geometry().top() - 1
+                else:
+                    bottom = bottom.geometry().bottom()
+
+            fill = bottom - widget.geometry().bottom() - y_margin
+            POS.set_hw(widget, widget.width(), widget.height() + fill)
+
+    @staticmethod
+    def bottom(widget, args, kwgs):
+        """ read fn:top """
+
+        top = POS.extra(top=kwgs)
+
+        if top: # rights task performed in fn:left
+            return
+
+        if not POS.digit(args):
+            if type(args) == dict:
+                if next(iter(args)) == 'bottom':
+                    args = args['bottom'].geometry().bottom() + 1
+                else:
+                    args = args['top'].geometry().top()
+            else:
+                args = args.geometry().bottom() + 1
+
+        y_margin = POS.extra(y_margin=kwgs)
+
+        x = widget.geometry().left()
+        y = args - widget.height() - y_margin
+        w = widget.width()
+        h = widget.height()
+
+        POS.set_geo(widget, x, y ,w, h)
+
+    @staticmethod
+    def left(widget, args, kwgs):
+        """
+        if argument is int moves widget to start from the argument pixel, if its an object
+        then using that objects leftest pixel. if arguemnt is a dictionary(left=sister_widget)
+        her's leftest pixel is used, however if dictionary(right=sister_widget) then it will
+        be that rightest pixel plus one, assuming we want to start NEXT TO sisters widget.
+
+        if right is somewhere within kwgs, right is dealt with within
+        here and no changes will occur when it actually reaches fn:right
+
+        x_margin simply moves the widget forward for that amount of pixels
+        but if both left and right changes occurs simultaniously here, x_margin
+        will actually shrink the finished position to honor both side margin-symetry
+
+        :param args: int, dictionary or widget
+        """
+        if not POS.digit(args):
+
+            if type(args) == dict:
+                if next(iter(args)) == 'left':
+                    args = args['left'].geometry().left() # assume left to left means sharing same pixel
+                else:
+                    args = args['right'].geometry().right() + 1 # assume left want to position NEXT to right position
+            else:
+                args = args.geometry().left()
+
+        x_margin = POS.extra(x_margin=kwgs)
+
+        x = args + x_margin
+        y = widget.geometry().top()
+        w = widget.width()
+        h = widget.height()
+
+        POS.set_geo(widget, x, y, w, h)
+
+        right = POS.extra(right=kwgs)
+
+        if right:
+
+            if not POS.digit(right):
+
+                if type(right) == dict:
+                    if next(iter(right)) == 'left':
+                        right = right['left'].geometry().left() - 1 # assume right want to position BEFORE left position
+                    else:
+                        right = right['right'].geometry().right() # assume right to right means sharing same pixel
+                else:
+                    right = right.geometry().right()
+
+            fill = right - widget.geometry().right() - x_margin
+            POS.set_hw(widget, widget.width() + fill, widget.height())
+
+    @staticmethod
+    def right(widget, args, kwgs):
+        """ read fn:left """
+        left = POS.extra(left=kwgs)
+
+        if left: # rights task performed in fn:left
+            return
+
+        if not POS.digit(args):
+
+            if type(args) == dict:
+                if next(iter(args)) == 'left':
+                    args = args['left'].geometry().left() - 1  # assume right want to position BEFORE left position
+                else:
+                    args = args['right'].geometry().right()  # assume right to right means sharing same pixel
+            else:
+                args = args.geometry().right()
+
+        x_margin = POS.extra(x_margin=kwgs)
+
+        x = args - widget.width() + 1 - x_margin # because we count start (zero) as first pixel
+        y = widget.geometry().top()
+        w = widget.width()
+        h = widget.height()
+
+        POS.set_geo(widget, x, y, w, h)
+
+    @staticmethod
+    def after(working_widget, preceeding_widget, kwgs):
+        """
+        position widget after preceeding_widget,
+        y cordinates will be honored
+        :param preceeding_widget: must be a widget
+        """
+        x_margin = POS.extra(x_margin=kwgs)
+        x = preceeding_widget.geometry().right() + 1 + x_margin # because we count start (zero) as first pixel
+        y = preceeding_widget.geometry().top()
+        w = working_widget.width()
+        h = working_widget.height()
+        POS.set_geo(working_widget, x,y,w,h)
+
+    @staticmethod
+    def before(working_widget, following_widget, kwgs):
+        """
+        position widget before following_widget,
+        y cordinates will be honored
+        :param preceeding_widget: must be a widget
+        """
+        x_margin = POS.extra(x_margin=kwgs)
+        x = following_widget.geometry().left() - working_widget.height() - 1 - x_margin  # subtracting first pixel
+        y = following_widget.geometry().top()
+        w = working_widget.width()
+        h = working_widget.height()
+        POS.set_geo(working_widget, x,y,w,h)
+
+    @staticmethod
+    def above(working_widget, widget_under, kwgs):
+        """
+        position widget above the widget under it, honoring x cordinates
+        :param widget_above: must be a widget
+        """
+        y_margin = POS.extra(y_margin=kwgs)
+        x = widget_under.geometry().left()
+        y = widget_under.geometry().top() - working_widget.height() - y_margin
+        w = working_widget.width()
+        h = working_widget.height()
+        POS.set_geo(working_widget, x,y,w,h)
+
+    @staticmethod
+    def below(working_widget, widget_above, kwgs):
+        """
+        position widget below the widget above it, honoring x cordinates
+        :param widget_above: must be a widget
+        """
+        y_margin = POS.extra(y_margin=kwgs)
+        x = widget_above.geometry().left()
+        y = widget_above.geometry().bottom() + 1 + y_margin # not sharing same pixel
+        w = working_widget.width()
+        h = working_widget.height()
+        POS.set_geo(working_widget, x,y,w,h)
+
+    @staticmethod
+    def under(*args):
+        POS.below(*args)
+
+    @staticmethod
+    def center(widget, args, kwgs):
+        pointa = args[0]
+        pointb = args[1]
+
+        if not POS.digit(pointa):
+            if type(pointa) == dict:
+                if next(iter(pointa)) == 'left':
+                    pointa = pointa['left'].geometry().left()
+                else:
+                    pointa = pointa['right'].geometry().right()
+            else:
+                pointa = pointa.geometry().right()
+
+        if not POS.digit(pointb):
+            if type(pointb) == dict:
+                if next(iter(pointb)) == 'left':
+                    pointb = pointb['left'].geometry().left()
+                else:
+                    pointb = pointb['right'].geometry().right()
+            else:
+                pointb = pointb.geometry().left()
+
+        rest = pointb - pointa - widget.width()
+        rest = rest * 0.5
+
+        x = pointa + rest
+        y = widget.geometry().top()
+        w = widget.width()
+        h = widget.height()
+
+        POS.set_geo(widget, x,y,w,h)
+
+    @staticmethod
+    def between(widget, list_with_two_widgets, kwgs):
+        """
+        if third index == True or 'x' widget is inserted between 0 and 1 in the row
+        if third index == False or 'y' widget is put between 0 and 1 stacked on top of each others
+        :param list_with_two_widgets: object, object, string/bool (defaults to True, honoring x)
+        """
+        if list_with_two_widgets[-1] in {False, 'y'}:
+            pointa = list_with_two_widgets[0].geometry().bottom() + 1 # else same pixel
+            pointb = list_with_two_widgets[1].geometry().top()
+
+            rest = (pointb - pointa) - widget.height()
+
+            if rest > 1:
+                x = widget.geometry().left()
+                y = pointa + (rest * 0.5)
+                POS.set_geo(widget, x, y, widget.width(), widget.height())
+
+        else:
+            pointa = list_with_two_widgets[0].geometry().right()
+            pointb = list_with_two_widgets[1].geometry().left() + 1 # else same pixel
+
+            rest = (pointb - pointa) - widget.width()
+
+            if rest > 1:
+                x = pointa + (rest * 0.5)
+                y = widget.geometry().top()
+                POS.set_geo(widget, x, y, widget.width(), widget.height())
+
+    @staticmethod
+    def move(widget, args, kwgs):
+        """
+        moving cordinates will be calculated from current position
+        :param args: list or tuple
+        """
+        x = widget.geometry().left() + args[0]
+        y = widget.geometry().top() + args[1]
+        w = widget.width()
+        h = widget.height()
+        POS.set_geo(widget, x,y,w,h)
+
+    @staticmethod
+    def background(widget, args, kwgs):
+        tech.style(widget, background=args)
+
+    @staticmethod
+    def color(widget, args, kwgs):
+        tech.style(widget, color=args)
+
+    @staticmethod
+    def font(widget, args, kwgs):
+        if POS.digit(args):
+            args = str(args) + 'pt'
+        tech.style(widget, font=args)
+
+POS = DIRECTPOSITION()
+
+# def new_pos(widget=None, kwgs=None, new=False, **kwargs):
+#     if not kwgs:
+#         kwgs = [kwargs]
+#
+#     if new:
+#         widget = QtWidgets.QLabel(new, lineWidth=0, midLineWidth=0)
+#         widget.show()
+#
+#     for args in kwgs:
+#         for k,v in args.items():
+#             fn = getattr(POS, k, False)
+#
+#             if not fn:
+#                 continue
+#
+#             fn(widget, v, kwgs)
+#
+#     return widget
+
 class ViktorinoxTechClass:
     def __init__(self):
         self.techdict = {}
+
+    @staticmethod
+    def pos(widget=None, kwgs=None, new=False, **kwargs):
+
+        if not kwgs:
+            kwgs = [kwargs]
+
+        if new:
+            widget = QtWidgets.QLabel(new, lineWidth=0, midLineWidth=0)
+            widget.show()
+
+        for args in kwgs:
+            for k, v in args.items():
+                fn = getattr(POS, k, False)
+
+                if not fn:
+                    continue
+
+                fn(widget, v, kwgs)
+
+        return widget
+    # @staticmethod
+    # def pos(widget=None,
+    #         new=None,
+    #         margin=0,
+    #         inside=None,
+    #         coat=None,
+    #         size=None, add=0,
+    #         width=None, height=None,
+    #         left=None, right=None,
+    #         below=None, above=None,
+    #         leftof=None, rightof=None,
+    #         move=None,
+    #         x_margin=0, y_margin=0,
+    #         background=None,
+    #         center=None,
+    #         ):
+    #     """
+    #     :param widget: changing widget
+    #     :param inside: one widget lives inside another   -> setGeometry()
+    #     :param coat: both widgets lives inside the same -> setGeometry()
+    #     :param size: tuple (w,h) or another widget       -> resize()
+    #     :param add: int usable with resize for exapnd or contract
+    #     :param left/right: another widget
+    #     :param width/height: int or another widget
+    #     :param below/above: another widget
+    #     :param left/right: another widget
+    #     :param move: tuple (-24, +16) in relation to current.geometry()
+    #     :param background: string/object sets background color (or entire objects stylesheet)
+    #     :param x_margin/y_margin: int space between (above,below,left,right only)
+    #     """
+    #     def geochange(x, y, w, h):
+    #         widget.setGeometry(int(x), int(y), int(w), int(h))
+    #
+    #     def geosize(w, h):
+    #         widget.resize(int(w), int(h))
+    #
+    #     if new != None:
+    #         widget = QtWidgets.QLabel(new)
+    #     # -------------------[INSIDE/COAT]
+    #     if inside != None:  # one widget lives inside the other
+    #         x = margin
+    #         y = margin
+    #         w = inside.width() - margin * 2
+    #         h = inside.height() - margin * 2
+    #         geochange(x, y, w, h)
+    #     elif coat != None:  # reside in same widget
+    #         x = coat.geometry().left() + margin
+    #         y = coat.geometry().top() + margin
+    #         w = coat.width() - margin * 2
+    #         h = coat.height() - margin * 2
+    #         geochange(x, y, w, h)
+    #     # -------------------[WIDTH]
+    #     if type(width) in {int, float}:
+    #         geosize(width + add, widget.height())
+    #     elif width != None:
+    #         geosize(width.width() + add, widget.height())
+    #     # -------------------[HEIGHT]
+    #     if type(height) in {int, float}:
+    #         geosize(widget.width(), height + add)
+    #     elif height != None:
+    #         geosize(widget.width(), height.height() + add)
+    #     # -------------------[SIZE]
+    #     if type(size) == tuple or type(size) == list:
+    #         geosize(size[0] + add, size[1] + add)
+    #     elif size != None:
+    #         geosize(size.width() + add, size.height() + add)
+    #     # -------------------[LEFT/RIGHT]
+    #     if left != None:
+    #         if type(left) in {int, float}:
+    #             x = left + x_margin
+    #         else:
+    #             x = left.geometry().left() + x_margin
+    #         if not right:
+    #             geochange(x, widget.geometry().top(), widget.width(), widget.height())
+    #         else:
+    #             if type(right) in {int, float}:
+    #                 w = right - x_margin
+    #             else:
+    #                 w = right.geometry().right() - x_margin * 2
+    #             geochange(x, widget.geometry().top(), w - x, widget.height())
+    #     elif right != None:
+    #         if type(right) in {int, float}:
+    #             x = right - widget.width() - x_margin + 1
+    #         else:
+    #             x = right.geometry().right() - widget.width() - x_margin + 1 # else same pixel
+    #         geochange(x, widget.geometry().top(), widget.width(), widget.height())
+    #     # -------------------[ABOVE/BELOW]
+    #     if above != None:
+    #         if type(above) in {int, float}:
+    #             y = above - widget.height() - y_margin + 1
+    #         else:
+    #             y = above.geometry().top() - widget.height() - y_margin + 1
+    #         geochange(widget.geometry().left(), y, widget.width(), widget.height())
+    #     elif below != None:
+    #         if type(below) in {int, float}:
+    #             y = below + y_margin
+    #         else:
+    #             y = below.geometry().bottom() + y_margin + 1 # else same pixel
+    #         geochange(widget.geometry().left(), y, widget.width(), widget.height())
+    #     # -------------------[LEFTOF/RIGHTOF]
+    #     if leftof != None:
+    #         x = leftof.geometry().left() - widget.width() - x_margin
+    #         y = leftof.geometry().top()
+    #         geochange(x, y, widget.width(), widget.height())
+    #     elif rightof != None:
+    #         x = rightof.geometry().right() + x_margin + 1
+    #         y = rightof.geometry().top()
+    #         geochange(x, y, widget.width(), widget.height())
+    #     # -------------------[MOVE]
+    #     if move and len(move) == 2:
+    #         x = widget.geometry().left() + move[0]
+    #         y = widget.geometry().top() + move[1]
+    #         w = widget.width()
+    #         h = widget.height()
+    #         geochange(x,y,w,h)
+    #     # -------------------[MOVE]
+    #     if center and widget:
+    #         pointa = center[0].geometry().left()
+    #         pointb = center[1].geometry().right()
+    #
+    #         if pointb > pointa:
+    #             rest = (pointb - pointa) - widget.width()
+    #             if rest > 1:
+    #                 x = center[0].geometry().left() + (rest * 0.5)
+    #                 geochange(x, widget.geometry().top(), widget.width(), widget.height())
+    #
+    #     if background != None:
+    #         if type(background) == str:
+    #             widget.setStyleSheet('background-color:' + background)
+    #         else:
+    #             widget.setStyleSheet(background.styleSheet())
+    #
+    #     if new != None:
+    #         widget.show()
+    #         return widget
+
 
     @staticmethod
     def separate_file_from_folder(local_path):
@@ -191,9 +765,19 @@ class ViktorinoxTechClass:
         os.remove(tmp_file)
 
     @staticmethod
-    def md5_hash_string(string):
+    def md5_hash_string(string=None, random=False, upper=False):
+        if random:
+            if string:
+                string = string + str(uuid.uuid4()) + str(time.time()) + 'how_much_is_the_fish?'
+            else:
+                string = str(uuid.uuid4()) + str(time.time()) + 'how_much_is_the_fish?'
+
         hash_object = hashlib.md5(string.encode())
         rv = hash_object.hexdigest()
+
+        if upper:
+            rv = rv.upper()
+
         return rv
 
     @staticmethod
@@ -249,7 +833,7 @@ class ViktorinoxTechClass:
 
             for launcher in finished_function:
 
-                if finished_arguments:
+                if finished_arguments != None:
                     # makes sure the arguents are put into a tuple
                     if type(finished_arguments) != tuple:
                         finished_arguments = (finished_arguments,)
@@ -444,131 +1028,6 @@ class ViktorinoxTechClass:
                 tech.style(object, font=str(count) + 'pt')
             else:
                 return count + 1
-
-    @staticmethod
-    def pos(widget=None,
-            new=None,
-            margin=0,
-            inside=None,
-            coat=None,
-            size=None, add=0,
-            width=None, height=None,
-            left=None, right=None,
-            below=None, above=None,
-            leftof=None, rightof=None,
-            move=None,
-            x_margin=0, y_margin=0,
-            background=None,
-            ):
-        """
-        :param widget: changing widget
-        :param inside: one widget lives inside another   -> setGeometry()
-        :param coat: both widgets lives inside the same -> setGeometry()
-        :param size: tuple (w,h) or another widget       -> resize()
-        :param add: int usable with resize for exapnd or contract
-        :param left/right: another widget
-        :param width/height: int or another widget
-        :param below/above: another widget
-        :param left/right: another widget
-        :param move: tuple (-24, +16) in relation to current.geometry()
-        :param background: string/object sets background color (or entire objects stylesheet)
-        :param x_margin/y_margin: int space between (above,below,left,right only)
-        """
-        def geochange(x, y, w, h):
-            widget.setGeometry(int(x), int(y), int(w), int(h))
-
-        def geosize(w, h):
-            widget.resize(int(w), int(h))
-
-        if new != None:
-            widget = QtWidgets.QLabel(new)
-        # -------------------[INSIDE/COAT]
-        if inside != None:  # one widget lives inside the other
-            x = margin
-            y = margin
-            w = inside.width() - margin * 2
-            h = inside.height() - margin * 2
-            geochange(x, y, w, h)
-        elif coat != None:  # reside in same widget
-            x = coat.geometry().left() + margin
-            y = coat.geometry().top() + margin
-            w = coat.width() - margin * 2
-            h = coat.height() - margin * 2
-            geochange(x, y, w, h)
-        # -------------------[WIDTH]
-        if type(width) in {int, float}:
-            geosize(width + add, widget.height())
-        elif width != None:
-            geosize(width.width() + add, widget.height())
-        # -------------------[HEIGHT]
-        if type(height) in {int, float}:
-            geosize(widget.width(), height + add)
-        elif height != None:
-            geosize(widget.width(), height.height() + add)
-        # -------------------[SIZE]
-        if type(size) == tuple or type(size) == list:
-            geosize(size[0] + add, size[1] + add)
-        elif size != None:
-            geosize(size.width() + add, size.height() + add)
-        # -------------------[LEFT/RIGHT]
-        if left != None:
-            if type(left) in {int, float}:
-                x = left + x_margin
-            else:
-                x = left.geometry().left() + x_margin
-            if not right:
-                geochange(x, widget.geometry().top(), widget.width(), widget.height())
-            else:
-                if type(right) in {int, float}:
-                    w = right - x_margin
-                else:
-                    w = right.geometry().right() - x_margin * 2
-                geochange(x, widget.geometry().top(), w - x, widget.height())
-        elif right != None:
-            if type(right) in {int, float}:
-                x = right - widget.width() - x_margin + 1
-            else:
-                x = right.geometry().right() - widget.width() - x_margin + 1 # else same pixel
-            geochange(x, widget.geometry().top(), widget.width(), widget.height())
-        # -------------------[ABOVE/BELOW]
-        if above != None:
-            if type(above) in {int, float}:
-                y = above - widget.height() - y_margin + 1
-            else:
-                y = above.geometry().top() - widget.height() - y_margin + 1
-            geochange(widget.geometry().left(), y, widget.width(), widget.height())
-        elif below != None:
-            if type(below) in {int, float}:
-                y = below + y_margin
-            else:
-                y = below.geometry().bottom() + y_margin + 1 # else same pixel
-            geochange(widget.geometry().left(), y, widget.width(), widget.height())
-        # -------------------[LEFTOF/RIGHTOF]
-        if leftof != None:
-            x = leftof.geometry().left() - widget.width() - x_margin
-            y = leftof.geometry().top()
-            geochange(x, y, widget.width(), widget.height())
-        elif rightof != None:
-            x = rightof.geometry().right() + x_margin + 1
-            y = rightof.geometry().top()
-            geochange(x, y, widget.width(), widget.height())
-        # -------------------[MOVE]
-        if move and len(move) == 2:
-            x = widget.geometry().left() + move[0]
-            y = widget.geometry().top() + move[1]
-            w = widget.width()
-            h = widget.height()
-            geochange(x,y,w,h)
-        # -------------------[MOVE]
-        if background != None:
-            if type(background) == str:
-                widget.setStyleSheet('background-color:' + background)
-            else:
-                widget.setStyleSheet(background.styleSheet())
-
-        if new != None:
-            widget.show()
-            return widget
 
     @staticmethod
     def NSFW_magz_comics_includer(fromlist):
@@ -969,12 +1428,18 @@ class ViktorinoxTechClass:
                 else:
                     return False
 
-    def signals(self, name='supersignal', reset=False, delete=False):
+    def signals(self, name=None, reset=False, delete=False):
         if 'signals' not in self.techdict:
             self.techdict.update(dict(signals={ }))
 
+        if name == None:
+            name = 0
+            while name in self.techdict['signals']:
+                name += 1
+
         if name not in self.techdict['signals'] and not delete:
             self.techdict['signals'][name] = WorkerSignals()
+            self.techdict['signals'][name].name = name
 
         elif name in self.techdict['signals'] and delete:
             self.techdict['signals'].pop(name)
@@ -982,6 +1447,7 @@ class ViktorinoxTechClass:
 
         elif name in self.techdict['signals'] and reset:
             self.techdict['signals'][name] = WorkerSignals()
+            self.techdict['signals'][name].name = name
 
         return self.techdict['signals'][name]
 

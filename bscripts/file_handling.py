@@ -65,7 +65,6 @@ def unzipper(zip_file=None, database=None, index=0, filename=None):
     files_in_the_zip = 1000
     file_to_extract = None
 
-
     if zip_file and filename:
         loc_source = t.separate_file_from_folder(zip_file)
         file_to_extract = filename
@@ -101,44 +100,72 @@ def unzipper(zip_file=None, database=None, index=0, filename=None):
 
     extract_folder = t.tmp_folder(loc_source.full_path, hash=True, reuse=True)
     extract_file = t.zero_prefiller(index, len(str(files_in_the_zip)))
-
     ext = file_to_extract.split('.')
     ext = ext[-1]
-
     loc_destination = t.separate_file_from_folder(extract_folder + '/' + extract_file + '.' + ext)
 
-    if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
-        return loc_destination.full_path
-
-    try:
-        zf = ZipFile(loc_source.full_path)
-        single_file = zf.getinfo(file_to_extract)
-        single_file.filename = loc_destination.filename
-        zf.extract(single_file, loc_destination.folder)
-
-    except BadZipFile:
+    if platform.system() == "Windows":
+        if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
+            return loc_destination.full_path
 
         try:
-            rf = rarfile.RarFile(loc_source.full_path)
-            single_file = rf.getinfo(file_to_extract)
-            hack_unrar(rf, single_file, loc_destination.full_path)
+            zf = ZipFile(loc_source.full_path)
+            single_file = zf.getinfo(file_to_extract)
+            single_file.filename = loc_destination.filename
+            zf.extract(single_file, loc_destination.folder)
+            if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
+                return loc_destination.full_path
 
-        except rarfile.NotRarFile:
-            return False
-        except rarfile.BadRarFile:
-            return False
+        except BadZipFile:
+            try:
+                rf = rarfile.RarFile(loc_source.full_path)
+                single_file = rf.getinfo(file_to_extract)
+                hack_unrar(rf, single_file, loc_destination.full_path)
+                if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
+                    return loc_destination.full_path
+
+            except rarfile.NotRarFile:
+                return False
+            except rarfile.BadRarFile:
+                return False
+            except:
+                return False
         except:
             return False
-    except:
-        return False
-    finally:
-        if not os.path.exists(loc_destination.full_path):
-            return False
-        elif os.path.getsize(loc_destination.full_path) == 0:
-            os.remove(loc_destination.full_path)
-            return False
 
-    return loc_destination.full_path
+    else:
+        if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
+            return loc_destination.full_path
+
+        try:
+            zf = ZipFile(loc_source.full_path)
+            single_file = zf.getinfo(file_to_extract)
+            single_file.filename = loc_destination.filename
+            zf.extract(single_file, loc_destination.folder)
+
+        except BadZipFile:
+            try:
+                rf = rarfile.RarFile(loc_source.full_path)
+                single_file = rf.getinfo(file_to_extract)
+                hack_unrar(rf, single_file, loc_destination.full_path)
+
+            except rarfile.NotRarFile:
+                return False
+            except rarfile.BadRarFile:
+                return False
+            except:
+                return False
+
+        except:
+            return False
+        finally:
+            if not os.path.exists(loc_destination.full_path):
+                return False
+            elif os.path.getsize(loc_destination.full_path) == 0:
+                os.remove(loc_destination.full_path)
+                return False
+
+        return loc_destination.full_path
 
 def generate_cover_from_image_file(path,
                                    database=None,
@@ -230,6 +257,7 @@ def check_for_pdf_assistance(pdf_file, index=0, pagecount=False, dry_run=False, 
     file its extracted and returned as a list with a signle JPEG file.
     if outoutfile exceeds 20mb assuming attack and reprocessing with 100dpi
 
+    :param pagecount: no work, returns pagelenght only
     :param pagecheck: doesnt check page avilibility befroce extracting
     :param dry_run: returns the filename if tends to use without extracting
     :param pdf_file: string
@@ -241,7 +269,11 @@ def check_for_pdf_assistance(pdf_file, index=0, pagecount=False, dry_run=False, 
     if not loc or not loc.ext.lower() == 'pdf':
         return False
 
-    poppler_path = None # todo poppler!!
+    poppler_path = t.config('pdf_support')
+    if type(poppler_path) == list:
+        poppler_path = poppler_path[0]
+    if type(poppler_path) != str:
+        poppler_path = None
 
     if pagecheck or pagecount:
         rv = pdfinfo_from_path(pdf_file, poppler_path=poppler_path)

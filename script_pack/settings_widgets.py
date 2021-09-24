@@ -1,9 +1,10 @@
-from PyQt5          import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore   import QPoint, Qt
+from PyQt5           import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore    import QPoint, Qt
 from bscripts.tricks import tech as t
-import math
 import os
 import time
+from script_pack.preset_colors import *
+
 
 
 class GOD(QtWidgets.QLabel):
@@ -65,12 +66,12 @@ class GOD(QtWidgets.QLabel):
 
             elif not self.special():
                 if active:
-                    t.style(self.button, background='green')
+                    t.style(self.button, background=BTN_ON)
                 else:
                     if darkred:
-                        t.style(self.button, background='rgb(115, 10, 10)')
+                        t.style(self.button, background=DARKRED)
                     else:
-                        t.style(self.button, background='gray')
+                        t.style(self.button, background=BTN_OFF)
 
     def activation_toggle(self, force=None, save=True, background=None, toggle=True, gui=True, signal=True):
 
@@ -89,10 +90,10 @@ class GOD(QtWidgets.QLabel):
         if gui:
             self.change_button_color(self.activated, background=background)
 
-        if save:
+        if save and 'type' in dir(self):
             t.save_config(self.type, self.activated)
 
-        if signal:
+        if signal and 'type' in dir(self):
             signal = t.signals(self.type)
             signal.activated.emit(self.activated is bool)
 
@@ -116,11 +117,46 @@ class GOD(QtWidgets.QLabel):
             self.change_button_color(self.highlighted, background=background)
 
 class CheckableWidget(GOD):
+    """
+    a QLineEdit with some text that sits next to a QLabel that immitatates a and
+    looks like a QPushButtons who changes from red to green when clicking on it.
+    the text is always normalized to fit the label, to enforce a certain fontsize
+    dict(textsize=dict(maxsize=INT, minsize=INT))
+
+    :param dictionary
+        text = the in the QLineEdit
+        dict(textsize=
+                maxsize = int, maximum font size
+                minsize = int, minmum font size
+        button_text = text
+        button_text_color = rgb
+        button_color = rgb
+        text_color = rgb
+        text_background = QLineEdits background color
+        button_width_factor = 1 is a square, larger factor makes a wider button
+        button_linewidth = int
+
+    """
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         if ev.button() == 1:
             self.activation_toggle()
 
+    def default_event_colors(self):
+        self.directives['activation'] = [
+            dict(object=self.textlabel, color='white'),
+            dict(object=self.button, background=BTN_SHINE_GREEN, color=BTN_SHINE_GREEN),
+        ]
+
+        self.directives['deactivation'] = [
+            dict(object=self.textlabel, color=BTN_SHADE),
+            dict(object=self.button, background=BTN_SHADE, color=BTN_SHADE),
+        ]
+
     def fill_dictionary_defaults(self, dictionary):
+        """
+        default values are put into the dictionary if not earlier specified
+        :param dictionary:
+        """
         if 'button_text' not in dictionary:
             dictionary['button_text'] = ''
 
@@ -138,6 +174,15 @@ class CheckableWidget(GOD):
 
         if 'button_width_factor' not in dictionary:
             dictionary['button_width_factor'] = 1
+
+        if 'alignment' in dictionary:
+            if dictionary['alignment'] == True:
+                dictionary['alignment'] = QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter
+        else:
+            dictionary['alignment'] = False
+
+        if 'shrink_to_text' not in dictionary:
+            dictionary['shrink_to_text'] = False
 
         if 'button_linewidth' not in dictionary:
             dictionary['button_linewidth'] = self.parent.lineWidth() - 1
@@ -162,9 +207,30 @@ class CheckableWidget(GOD):
         """
         self.fill_dictionary_defaults(dictionary)
 
+        def set_alignment(self, alignment):
+            if alignment:
+                self.textlabel.setAlignment(alignment)
+
+        def shrink_expand_or_keep(self, shrink_to_text):
+            if shrink_to_text:
+                w = self.textlabel.fontMetrics().boundingRect(self.textlabel.text()).width()
+                width_change = self.textlabel.width() - w
+
+                if type(shrink_to_text) == dict and 'margin' in shrink_to_text:
+                    width_change -= shrink_to_text['margin'] * 2
+                else:
+                    width_change -= 2+2
+
+                if width_change > 1:
+                    canvas = dictionary['settingscanvas']
+                    for i in [canvas, self, self.textlabel]:
+                        t.pos(i, width=i.width() - width_change)
+
+
+        # >>======================= [ BELOW ] }>============BELOW:ME========>>
         maxsize = dictionary['maxsize']
         minsize = dictionary['minsize']
-        # >>======================= [ BELOW ] }>============BELOW:ME========>>
+
         button_text = dictionary['button_text']
         button_color = dictionary['button_color']
         button_text_color = dictionary['button_text_color']
@@ -175,6 +241,9 @@ class CheckableWidget(GOD):
 
         button_width_factor = dictionary['button_width_factor']
         button_linewidth = dictionary['button_linewidth']
+
+        alignment = dictionary['alignment']
+        shrink_to_text = dictionary['shrink_to_text']
         # <<======ABOVE:ME=======<{ [ABOVE] ==============================<<
         t.style(self, background='rgba(0,0,0,0)')
 
@@ -183,7 +252,8 @@ class CheckableWidget(GOD):
         self.button = t.pos(new=self, inside=self._bframe, margin=button_linewidth)
         self.button.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
 
-        self.textlabel = t.pos(new=self, inside=self, left=self._bframe.geometry().right() + button_linewidth, right=self)
+        self.textlabel = t.pos(new=self, inside=self, after=self._bframe, x_margin=button_linewidth-1)
+        t.pos(self.textlabel, left=self.textlabel, right=self)
 
         d = {
             self.textlabel: dict(text=text, text_background=text_background, text_color=text_color),
@@ -195,11 +265,19 @@ class CheckableWidget(GOD):
             t.style(k, background=v['text_background'], color=v['text_color'])
             t.correct_broken_font_size(k, maxsize=maxsize, minsize=minsize)
 
+        set_alignment(self, alignment)
+        shrink_expand_or_keep(self, shrink_to_text)
+
         dictionary.update(button=self.button, textlabel=self.textlabel)
 
         self.activation_toggle(toggle=False, save=False)
 
 class ExecutableLookCheckable(CheckableWidget):
+    """
+    an executable button that has a progress bar built inside it self
+    signals makes the progress bar go larger in size and tooltip can
+    show the exact progress level
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.running_job = False
@@ -227,7 +305,10 @@ class ExecutableLookCheckable(CheckableWidget):
         if not self.running_job:
             progress['stop'] = True
 
-    def jobs_done(self, finished_text='DONE!', finished_color='green', slave_can_alter=True, running_job=False):
+    def jobs_done(self, finished_text='DONE!', finished_color=JOB_SUCCESS, slave_can_alter=True, running_job=False):
+        """
+        kills the progress bar (labels) and prints out DONE on the primary label
+        """
         t.signals(self.progress_signal.name, delete=True)
         t.style(self.button, background=finished_color)
         self.button.setText(finished_text)
@@ -238,24 +319,31 @@ class ExecutableLookCheckable(CheckableWidget):
         self.slaves_can_alter = slave_can_alter
 
     def job_stopped(self, progress=None, *args, **kwargs):
-        self.jobs_done(finished_text='STOPPED!', finished_color='orange', *args, **kwargs)
+        self.jobs_done(finished_text='STOPPED!', finished_color=JOB_STOPPED, *args, **kwargs)
 
     def job_error(self, progress=None, *args, **kwargs):
-        self.jobs_done(finished_text='ERROR!', finished_color='red', *args, **kwargs)
+        self.jobs_done(finished_text='ERROR!', finished_color=JOB_ERROR, *args, **kwargs)
 
     def start_job(self, signalgroup, default_progress=True, default_finished=True, default_stop=True, default_error=True):
+
+        def create_progress_label_and_button(self):
+            self.progress_label = t.pos(new=self.button, inside=self.button, background='darkGreen', width=1)
+            self.tmp_label = t.pos(new=self.button, inside=self.button)
+            self.tmp_label.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
+            self.tmp_label.setText('RUNNING')
+            t.style(self.tmp_label, background='rgba(5,5,5,5)', color='black')
+            t.correct_broken_font_size(self.tmp_label, x_margin=3, y_margin=0)
+
         self.slaves_can_alter = False
         self.running_job = True
-        t.style(self.button, background='darkGray')
-        self.button.setText("")
-        self.progress_label = t.pos(new=self.button, inside=self.button, background='darkGreen', width=1)
-        self.tmp_label = t.pos(new=self.button, inside=self.button)
-        self.tmp_label.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
-        self.tmp_label.setText('RUNNING')
-        t.style(self.tmp_label, background='rgba(5,5,5,5)', color='black', font='14pt')
-        t.correct_broken_font_size(self.tmp_label, x_margin=3, y_margin=0)
+
         self.progress_signal = t.signals(signalgroup)
         self.progress_signal.name = signalgroup
+
+        t.style(self.button, background='darkGray')
+        self.button.setText("")
+
+        create_progress_label_and_button(self)
 
         if default_progress:
             self.progress_signal.progress.connect(self.show_progress)
@@ -270,17 +358,23 @@ class ExecutableLookCheckable(CheckableWidget):
             self.progress_signal.error.connect(self.job_stopped)
 
 class GLOBALDeactivate(GOD):
+    """
+    global highlighting on mousehover for the entire program
+    this has no clickable event and only reacts on mouse movement.
+    """
     def __init__(self, place, global_signal=None, *args, **kwargs):
         super().__init__(place, *args, **kwargs)
         self.setMouseTracking(True)
         self.global_deactivation_signal = t.signals(global_signal or 'global_on_off_signal')
         self.global_deactivation_signal.deactivate.connect(self.signal_global_deactivate)
         self.global_deactivation_signal.activate.connect(self.signal_global_activate)
-        self.directives = dict(activation=[], deactivation=[])
+        self.directives = dict(activation=[], deactivation=[]) # special values inside here
         self.slaves_can_alter = True
 
     def change_color_on_mousehover(self, ev):
-
+        """
+        emits activate/deactivate whereever the mouse is inside or outside its area
+        """
         if ev.pos().x() < 3 or ev.pos().x() > self.width() - 3:
             if self.highlighted:
                 self.global_deactivation_signal.deactivate.emit(self.type)
@@ -294,6 +388,10 @@ class GLOBALDeactivate(GOD):
                 self.global_deactivation_signal.activate.emit(self.type)
 
     def signal_global_activate(self, signal):
+        """
+        if i'm the signal and i'm not yet highlighed, then highlight me!
+        :param signal: string
+        """
         if self.type != signal:
             return
 
@@ -304,6 +402,10 @@ class GLOBALDeactivate(GOD):
         self.signal_global_gui_change(directive='activation', background='black', color='white')
 
     def signal_global_deactivate(self, signal):
+        """
+        if i'm NOT the signal and i'm highlighted, i'm turned off!
+        :param signal: string
+        """
         if self.type == signal:
             return
 
@@ -316,7 +418,13 @@ class GLOBALDeactivate(GOD):
         self.highlight_toggle(force=False, gui=False)
         self.signal_global_gui_change(directive='deactivation', background='black', color='gray')
 
-    def signal_global_gui_change(self, directive, background, color):
+    def signal_global_gui_change(self, directive, background=None, color=None):
+        """
+        this can be highjacked directly to alter appearance
+        :param directive: activation or deactivation (should've been a bool)
+        :param background: rgb
+        :param color: rgb
+        """
         if type(self.directives[directive]) == dict:
             user_sets = [self.directives[directive]]
         else:
@@ -335,13 +443,39 @@ class GLOBALDeactivate(GOD):
     def mouseMoveEvent(self, ev: QtGui.QMouseEvent) -> None:
         self.change_color_on_mousehover(ev)
         self.global_deactivation_signal.deactivate.emit(self.type)
-# >>======================= [    MAYBE THESE IS JUST ONE CLASS   ] }>============BELOW:ME========>>
-class CheckableWithSignal(CheckableWidget):
-    def __init__(self, place, signalgroup=None, *args, **kwargs):
+
+class CheckBoxSignalGroup(CheckableWidget):
+    """
+    CLICKING ONLY TURNS ON, theres no toggling
+
+    clicking one box sends signal to all from the same group and the only
+    one thats turned on is the clicked one and all others are turned off
+    """
+    def __init__(self, place, signalgroup=None,  *args, **kwargs):
         super().__init__(place, *args, **kwargs)
+
         self.signalgroup = t.signals(signalgroup)
+        self.signalgroup.checkgroup_master.connect(self.checkgroup_signal)
+
+    def checkgroup_signal(self, signal):
+        """
+        everyone gets the signal, if i'm on and not the signal i turn off and vice versa
+        :param signal: string
+        """
+
+        if self.activated and self.type != signal:
+            self.activation_toggle(force=False)
+
+        elif not self.activated and self.type == signal:
+            self.activation_toggle(force=True)
 
     def fall_back_to_default(self, list_with_widgets, fallback_type):
+        """
+        when we iter all widgets and none of these are active
+        accodring to settings, then we activate to fallback_type
+        :param list_with_widgets:
+        :param fallback_type: string
+        """
         for count, i in enumerate(list_with_widgets):
 
             if t.config(i.type):
@@ -353,25 +487,18 @@ class CheckableWithSignal(CheckableWidget):
 
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         if ev.button() == 1:
-            self.activation_toggle(save=True)
             self.signalgroup.checkgroup_master.emit(self.type)
 
-class CheckBoxSignalGroup(CheckableWithSignal):
-    def __init__(self, place, signalgroup=None,  *args, **kwargs):
-        super().__init__(place, *args, **kwargs)
-
-        self.signalgroup = t.signals(signalgroup)
-        self.signalgroup.checkgroup_master.connect(self.checkgroup_signal)
-
-    def checkgroup_signal(self, signal):
-
-        if self.activated and self.type != signal:
-            self.activation_toggle(force=False)
-        elif not self.activated and self.type == signal:
-            self.activation_toggle(force=True)
-# <<======ABOVE:ME=======<{ [    MAYBE THESE IS JUST ONE CLASS   ] ==============================<<
-
 class HighlightRadioBoxGroup(CheckBoxSignalGroup, GLOBALDeactivate):
+    """
+    this is a combination group that both highlights niceley and toggles from its inheritance
+
+    requirements:
+
+    self.post_init()
+    self.button
+    self.textlabel
+    """
     def __init__(self, place, signalgroup=None, *args, **kwargs):
         super().__init__(place=place, signalgroup=signalgroup, *args, **kwargs)
         self.signalgroup_radio_name = signalgroup or 'global_on_off_signal' + '_radio_change'
@@ -423,20 +550,45 @@ class HighlightRadioBoxGroup(CheckBoxSignalGroup, GLOBALDeactivate):
         self.textlabel.setMouseTracking(True)
         self.enslave_me_signal = t.signals(self.signalgroup_radio_name)
         self.enslave_me_signal.deactivate.connect(self.slave_can_alter_signal)
-
-        self.directives['activation'] = [
-            dict(object=self.textlabel, color='white'),
-            dict(object=self.button, background='lightGreen', color='lightGreen'),
-        ]
-
-        self.directives['deactivation'] = [
-            dict(object=self.textlabel, color='gray'),
-            dict(object=self.button, background='gray', color='gray'),
-        ]
+        self.default_event_colors()
 
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         if ev.button() == 1:
             self.enslave_me_signal.deactivate.emit(self.type)
+
+class CheckableAndGlobalHighlight(CheckableWidget, GLOBALDeactivate):
+    """
+    this is kind of a hack, gives checkable widgets the ability
+    to mouse hover highlight its not bad so i may keep up with it
+    """
+    def post_init(self):
+        self.button.setMouseTracking(True)
+        self.textlabel.setMouseTracking(True)
+        self.default_event_colors()
+
+    def signal_global_deactivate(self, signal):
+        """
+        if i'm NOT the signal and i'm highlighted, i'm turned off
+        unless i'm activated, then i'm showing my on-colors
+        :param signal: string
+        """
+        if self.type == signal:
+            return
+
+        if not self.highlighted:
+            return
+
+        if not self.slaves_can_alter:
+            return
+
+        self.highlight_toggle(force=False, gui=False)
+
+        if self.activated:
+            self.activation_toggle(toggle=False, save=False) # not ugly, but its a hack -> gui change only
+        else:
+            self.signal_global_gui_change(directive='deactivation', background='black', color='gray')
+
+
 
 class LCD(QtWidgets.QLCDNumber):
     def __init__(self, place, digitmultiplyer, type, clickable=True, autosave=True, background='black', color='white'):
@@ -530,11 +682,11 @@ class CountLabel(GOD):
             lcd = self.lcd_displays[count]
 
             if count+1 == len(self.lcd_displays):
-                t.pos(lcd, rightof=self.title_label)
+                t.pos(lcd, after=self.title_label)
                 t.pos(lcd, move=[margin,0])
                 self.extend_title_to_reach_lcd()
             else:
-                t.pos(lcd, rightof=self.lcd_displays[count+1])
+                t.pos(lcd, after=self.lcd_displays[count+1])
 
         self.expand_to_lest_size()
 
@@ -658,6 +810,10 @@ class LCDRow(CountLabel):
 
 
 class FolderSettingsWidget(CheckableWidget):
+    def __init__(self, place, multiple_folders=True, *args, **kwargs):
+        super().__init__(place=place, *args, **kwargs)
+        self.multiple_folders = multiple_folders
+
     def post_init(self):
         self.dir_pixel = []
         self.lineedit.textChanged.connect(self.text_changed)
@@ -700,7 +856,7 @@ class FolderSettingsWidget(CheckableWidget):
 
             elif delete:
                 if 'save_button' in dir(self) and delete:
-                    right = self.lineedit.geometry().right() + 1
+                    right = self.lineedit.geometry().right()
                     t.pos(self.lineedit, left=self.save_button, right=right)
                     self.save_button.close()
                     del self.save_button
@@ -734,10 +890,13 @@ class FolderSettingsWidget(CheckableWidget):
 
                     self.parent.save_or_delete_this_location(include_location=text)
 
-        self.save_button = SaveButton(self.parent, type='_save_button' + self.type, text=text, parent=self)
-        t.pos(self.save_button, coat=self.lineedit, left=self.lineedit, width=60 - self.parent.lineWidth())
+        signal = self.global_deactivation_signal.name
+        linewidth = self.parent.lineWidth() or 1
+        self.save_button = SaveButton(
+            self.parent, type='_save_button' + self.type, text=text, parent=self, global_signal=signal)
+        t.pos(self.save_button, coat=self.lineedit, left=self.lineedit, width=60 - linewidth)
+        t.pos(self.lineedit, move=[60,0], width=self.lineedit, add=-60)
         t.correct_broken_font_size(self.save_button, x_margin=2, y_margin=0)
-        t.pos(self.lineedit, move=[60,0], width=self.lineedit.width() - 60)
 
         if make_small:
             t.pos(self.save_button, height=self.height() * 0.5)
@@ -750,7 +909,7 @@ class FolderSettingsWidget(CheckableWidget):
 
             elif delete:
                 if 'extend_button' in dir(self) and delete:
-                    right = self.lineedit.geometry().right() + 1
+                    right = self.lineedit.geometry().right()
                     t.pos(self.lineedit, left=self.extend_button, right=right)
                     self.extend_button.close()
                     del self.extend_button
@@ -778,7 +937,9 @@ class FolderSettingsWidget(CheckableWidget):
         if reuse_or_destroy(self, create, delete):
             return
 
-        self.extend_button = ExtendButton(self.parent, type='_extend_button' + self.type, text=text, parent=self)
+        signal = self.global_deactivation_signal.name
+        self.extend_button = ExtendButton(
+            self.parent, type='_extend_button' + self.type, text=text, parent=self, global_signal=signal)
         t.pos(self.extend_button, coat=self.save_button, below=self.save_button)
         t.correct_broken_font_size(self.extend_button, x_margin=2, y_margin=0)
 
@@ -790,7 +951,7 @@ class FolderSettingsWidget(CheckableWidget):
 
             elif delete:
                 if 'delete_button' in dir(self) and delete:
-                    right = self.lineedit.geometry().right() + 1
+                    right = self.lineedit.geometry().right()
                     t.pos(self.lineedit, left=self.delete_button, right=right)
                     self.delete_button.close()
                     del self.delete_button
@@ -813,12 +974,18 @@ class FolderSettingsWidget(CheckableWidget):
                     self.parent.save_or_delete_this_location(exclude_location=text)
 
         def make_delete_button(self):
-            w = int(self.height() * 0.3) + self.parent.lineWidth()
-            self.delete_button = DeleteButton(self.parent, type='_delete_button' + self.type, text=text, parent=self)
-            self.delete_button.setToolTip('DELETE THIS PATH FROM SETTINGS')
+            signal = self.global_deactivation_signal.name
+
+            linewidth = self.parent.lineWidth() or 1
+            w = int(self.height() * 0.3) + linewidth
+            le_right = self.lineedit.geometry().right()
+            self.delete_button = DeleteButton(
+                self.parent, type='_delete_button' + self.type, text=text, parent=self, global_signal=signal)
+
             t.pos(self.delete_button, coat=self.lineedit, left=self.lineedit, width=w)
-            ww = self.lineedit.width() - w - self.parent.lineWidth()
-            t.pos(self.lineedit, move=[w + self.parent.lineWidth(), 0], width=ww)
+            t.pos(self.lineedit, left=dict(right=self.delete_button), x_margin=linewidth)
+            t.pos(self.lineedit, left=self.lineedit, right=le_right)
+            self.delete_button.setToolTip('DELETE THIS PATH FROM SETTINGS')
 
         if reuse_or_destroy(self, create, delete):
             return
@@ -830,11 +997,11 @@ class FolderSettingsWidget(CheckableWidget):
             t.style(self.lineedit, background='black', color='gray')
             self.manage_delete_button(delete=True)
 
-            if t.config(self.type, curious=True):
+            if t.config(self.type, curious=True) and self.multiple_folders:
                 self.manage_save_button(create=True, text='REPLACE', make_small=True)
                 self.manage_extend_button(create=True, text='APPEND')
             else:
-                self.manage_save_button(create=True, text='SAVE ?')
+                self.manage_save_button(create=True, text='SAVE!?')
 
         elif self.text_in_database():
             t.style(self.lineedit, background='black', color='white')
@@ -903,7 +1070,7 @@ class FolderSettingsWidget(CheckableWidget):
                 if count == 0:
                     t.pos(pix, coat=self.lineedit, size=[8, 8], right=self.lineedit, move=[-2, 2])
                 else:
-                    t.pos(pix, coat=self.dir_pixel[-1], leftof=self.dir_pixel[-1], x_margin=2)
+                    t.pos(pix, coat=self.dir_pixel[-1], before=self.dir_pixel[-1], x_margin=2)
 
                 self.dir_pixel.append(pix)
 
@@ -915,7 +1082,7 @@ class FolderSettingsWidget(CheckableWidget):
                     pix.activation_toggle(force=False, background='orange')
 
         close_previous_pix(self)
-        rv = t.config(self.type)
+        rv = t.config(self.type, curious=True)
 
         if not rv or type(rv) != list:
             return
@@ -957,7 +1124,41 @@ class FolderSettingsWidget(CheckableWidget):
 
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         if ev.button() == 1:
-            self.activation_toggle()
+            if t.config(self.type, curious=True):
+                self.activation_toggle(force=True)
+            else:
+                self.activation_toggle(force=False)
+
+class FolderSettingsAndGLobalHighlight(FolderSettingsWidget, CheckableAndGlobalHighlight):
+    def post_init(self):
+
+        self.button.setMouseTracking(True)
+        self.textlabel.setMouseTracking(True)
+
+        self.directives['activation'] = [
+            dict(object=self.textlabel, color='white'),
+            dict(object=self.button, background='lightGreen', color='lightGreen'),
+        ]
+
+        self.directives['deactivation'] = [
+            dict(object=self.textlabel, color='gray'),
+            dict(object=self.button, background='gray', color='gray'),
+        ]
+
+        self.dir_pixel = []
+        self.lineedit.textChanged.connect(self.text_changed)
+        rv = t.config(self.type, curious=True)
+
+        if rv and type(rv) == list:
+            self.create_small_folder_pixles(path=rv[0])
+            loc = t.separate_file_from_folder(rv[0])
+            self.lineedit.setText(loc.full_path)
+
+        elif rv:
+            self.activation_toggle(force=True, save=False)
+
+        else:
+            self.activation_toggle(force=False, save=False)
 
 class UniversalSettingsArea(GOD):
     def __init__(self, place, activation_toggle=None, extravar=None, *args, **kwargs):
@@ -976,12 +1177,13 @@ class UniversalSettingsArea(GOD):
         header.setLineWidth(linewidth)
         header.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
         header.setText(title)
-        textsize = t.correct_broken_font_size(header, maxsize=80)
+        textsize = t.correct_broken_font_size(header, maxsize=80, y_margin=1, x_margin=4)
         header.setText("")
         l = t.pos(new=header, coat=header, margin=linewidth)
         l.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
         t.style(l, background=background, color=text_color, font=str(textsize) + 'pt')
         l.setText(title)
+        header.textlabel = l
 
         return header
 
@@ -1142,7 +1344,8 @@ class UniversalSettingsArea(GOD):
 
             self.place_out_widgets_inside_settings_area(settingscanvas, label,
                                                         toolsheight=toolsheight, previous_labels=previous)
-            dictionary.update(dict(label=label))
+
+            dictionary.update(dict(label=label, settingscanvas=settingscanvas))
             label.draw_checkable_widget(dictionary)  # todo not pretty some work was offloaded on child
             settingscanvas.widgets.append(dictionary)
 
@@ -1250,10 +1453,10 @@ class UniversalSettingsArea(GOD):
 
             if extend_le_til:
                 t.pos(settingscanvas, width=extend_le_til)
-                t.pos(label.lineedit, coat=label, rightof=label)
+                t.pos(label.lineedit, coat=label, after=label)
                 t.pos(label.lineedit, left=label.lineedit, right=settingscanvas, x_margin=margin)
             else:
-                t.pos(label.lineedit, coat=label, rightof=label, x_margin=margin, width=le_width)
+                t.pos(label.lineedit, coat=label, after=label, x_margin=margin, width=le_width)
 
             t.pos(settingscanvas, width=label.lineedit.geometry().right(), add=margin)
             t.pos(label.lineedit, width=label.lineedit.width() - margin - linewidth)
@@ -1264,3 +1467,5 @@ class UniversalSettingsArea(GOD):
             self.delayed_init(dictionary, force=True)
 
         return settingscanvas
+
+
