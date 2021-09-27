@@ -7,7 +7,7 @@ INSTALLATION:
 1: Install Python: 
 https://www.python.org/downloads/
 
-2: Install dependencies:
+2: Install dependencies from its unpacked directory type:
 pip install -r requirements.txt --user
 
 Microsoft Windows
