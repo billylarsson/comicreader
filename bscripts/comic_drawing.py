@@ -115,7 +115,6 @@ class AutoChangePage(ReadingMenu):
             esc.activated.connect(self.quit)
 
         self.goto_next_page()
-        print(self.sleep_time)
         t.start_thread(
             self.dummy, worker_arguments=self.sleep_time,
             finished_function=self.button_clicked, finished_arguments=False
@@ -636,7 +635,8 @@ class PAGE(QtWidgets.QLabel):
         self.show()
 
         self.post_init(database, file, index)
-        self.show_this_page(index=self.who_am_primary, next=True)
+        if not self.show_this_page(index=self.who_am_primary, next=True):
+            self.close()
 
     def quit(self):
         signal = t.signals('reading')
@@ -1671,6 +1671,7 @@ class INFOWidget(ComicWidget):
         self.setFrameStyle(QtWidgets.QFrame.Box|QtWidgets.QFrame.Raised)
         self.setLineWidth(1)
         self.setMidLineWidth(2)
+        t.style(self, tooltip=True, border='black', color='black', background='white')
 
         self.parent = parent
         self.database = database
@@ -2017,19 +2018,16 @@ class INFOWidget(ComicWidget):
                     self.textlabel.setMouseTracking(True)
 
                     self.directives['activation'] = [
-                        dict(object=self.textlabel, color='white'),
-                        dict(object=self.button, background='cyan', color='black'),
+                        dict(object=self.textlabel, color=TXT_SHINE),
                     ]
 
                     self.directives['deactivation'] = [
-                        dict(object=self.textlabel, color='gray'),
-                        dict(object=self.button, background='darkCyan', color='black'),
+                        dict(object=self.textlabel, color=TXT_SHADE),
                     ]
                     t.pos(self.textlabel, inside=self)
 
                 def mute_label(self):
                     self.textlabel.setText("ALL FILES ARE WEBP")
-                    t.pos(self.textlabel, inside=self)
                     self.button_clicked = lambda: 1 + 1
 
                 def special(self):
@@ -2151,6 +2149,7 @@ class INFOWidget(ComicWidget):
                     widget=ConvertPDF,
                     post_init=True,
                     alignment=True,
+                    hide_button=True,
                     button_width_factor=2.5,
                     button_text='', button_color='darkCyan', text_color='gray',
                     kwargs=dict(
@@ -2189,13 +2188,11 @@ class INFOWidget(ComicWidget):
                     self.textlabel.setMouseTracking(True)
 
                     self.directives['activation'] = [
-                        dict(object=self.textlabel, color='white'),
-                        dict(object=self.button, background='cyan', color='black'),
+                        dict(object=self.textlabel, color=TXT_SHINE),
                     ]
 
                     self.directives['deactivation'] = [
-                        dict(object=self.textlabel, color='gray'),
-                        dict(object=self.button, background='darkCyan', color='black'),
+                        dict(object=self.textlabel, color=TXT_SHADE),
                     ]
                     if not self.mute_label_refresh_local_path():
                         t.pos(self.textlabel, inside=self)
@@ -2203,7 +2200,6 @@ class INFOWidget(ComicWidget):
                 def mute_label_refresh_local_path(self):
                     if not self.webp_convertable_files():
                         self.textlabel.setText("ALL FILES ARE WEBP")
-                        t.pos(self.textlabel, inside=self)
                         self.button_clicked = lambda: 1+1
                         self.local_path_widget.database = self.database
                         self.local_path_widget.lineedit.setText(self.database[DB.comics.local_path])
@@ -2382,6 +2378,7 @@ class INFOWidget(ComicWidget):
                     widget=ConvertToWEBP,
                     post_init=True,
                     alignment=True,
+                    hide_button=True,
                     button_width_factor=2.5,
                     button_text='', button_color='darkCyan', text_color='gray',
                     kwargs=dict(
@@ -2541,12 +2538,74 @@ class INFOWidget(ComicWidget):
 
             return True
 
+        def make_clean_database_button(self):
+            class ClearDatabase(HighlightRadioBoxGroup, ExecutableLookCheckable):
+                """
+                NULL to all DB.comics.* except for id, type and local_path
+                """
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.activation_toggle(force=False)
+
+                def post_init(self):
+                    self.button.setMouseTracking(True)
+                    self.textlabel.setMouseTracking(True)
+
+                    self.directives['activation'] = [
+                        dict(object=self.textlabel, color=TXT_SHINE),
+                    ]
+
+                    self.directives['deactivation'] = [
+                        dict(object=self.textlabel, color=TXT_SHADE),
+                    ]
+
+                def button_clicked(self):
+                    data = list(self.database)
+                    for count in range(1, len(data)):
+
+                        if count == DB.comics.local_path or count == DB.comics.type:
+                            continue
+
+                        data[count] = None
+
+                    query, _ = sqlite.empty_insert_query('comics')
+                    sqlite.execute(query='delete from comics where id is (?)', values=data[0])
+                    sqlite.execute(query=query, values=tuple(data))
+
+                def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                    if ev.button() == 1:
+                        self.button_clicked()
+
+            set6 = UniversalSettingsArea(self)
+            clean = [
+                dict(
+                    text='RESET DATA',
+                    tooltip="erases rating, what page you're currently on, bookmarks, etc, etc...(soft changes only, file left untouched)",
+                    widget=ClearDatabase,
+                    hide_button=True,
+                    alignment=True,
+                    post_init=True,
+                    kwargs=dict(
+                        type='_clear_database',
+                        global_signal=global_signal,
+                        extravar=dict(
+                            database=self.database
+                        )
+                    )
+                )
+            ]
+
+            set6.make_this_into_checkable_buttons(clean, toolsheight=20, linewidth=1)
+
+            return set6
+
         def make_small_page_squares_canvas(self):
             set5 = t.pos(new=self)
             set5.squares = []
 
             if not make_small_page_squares(self, canvas=set5, start_from=0):
-                return set5.close()
+                set5.close()
+                return False
 
             expand_now(set5, set5.squares)
             return set5
@@ -2584,8 +2643,12 @@ class INFOWidget(ComicWidget):
             t.pos(set5, below=set4 or set3 or set1, y_margin=5)
             expandlater.append(set5)
 
+        set6 = make_clean_database_button(self)
+        t.pos(set6, width=set1, left=set1, bottom=dict(top=set2), y_margin=5)
+
         expandlater.append(set1)
         expandlater.append(set2)
+        expandlater.append(set6)
 
         expand_now(self, expandlater)
 

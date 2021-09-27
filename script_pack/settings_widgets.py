@@ -189,6 +189,9 @@ class CheckableWidget(GOD):
             if dictionary['button_linewidth'] < 2:
                 dictionary['button_linewidth'] = 2
 
+        if 'hide_button' not in dictionary:
+            dictionary['hide_button'] = False
+
         if 'textsize' in dictionary:
             dictionary['maxsize'] = dictionary['textsize']
             dictionary['minsize'] = dictionary['textsize'] - 1
@@ -223,9 +226,13 @@ class CheckableWidget(GOD):
 
                 if width_change > 1:
                     canvas = dictionary['settingscanvas']
-                    for i in [canvas, self, self.textlabel]:
+                    cycle = [canvas, self, self.textlabel]
+
+                    for i in cycle:
                         t.pos(i, width=i.width() - width_change)
 
+                    if 'lineedit' in dir(self):
+                        t.pos(self.lineedit, width=self.lineedit, sub=width_change, move=[-width_change,0])
 
         # >>======================= [ BELOW ] }>============BELOW:ME========>>
         maxsize = dictionary['maxsize']
@@ -244,6 +251,8 @@ class CheckableWidget(GOD):
 
         alignment = dictionary['alignment']
         shrink_to_text = dictionary['shrink_to_text']
+
+        hide_button = dictionary['hide_button']
         # <<======ABOVE:ME=======<{ [ABOVE] ==============================<<
         t.style(self, background='rgba(0,0,0,0)')
 
@@ -253,6 +262,7 @@ class CheckableWidget(GOD):
         self.button.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
 
         self.textlabel = t.pos(new=self, inside=self, after=self._bframe, x_margin=button_linewidth-1)
+
         t.pos(self.textlabel, left=self.textlabel, right=self)
 
         d = {
@@ -267,6 +277,9 @@ class CheckableWidget(GOD):
 
         set_alignment(self, alignment)
         shrink_expand_or_keep(self, shrink_to_text)
+
+        if hide_button: # resize text/label before expanding due to progress label 
+            t.pos(self.textlabel, inside=self)
 
         dictionary.update(button=self.button, textlabel=self.textlabel)
 
@@ -331,7 +344,8 @@ class ExecutableLookCheckable(CheckableWidget):
             self.tmp_label = t.pos(new=self.button, inside=self.button)
             self.tmp_label.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
             self.tmp_label.setText('RUNNING')
-            t.style(self.tmp_label, background='rgba(5,5,5,5)', color='black')
+            t.style(self.tmp_label, background='rgba(5,5,5,5)', color='rgba(10,10,10,250)')
+            t.style(self.tmp_label, tooltip=True, background='white', color='black', border='black')
             t.correct_broken_font_size(self.tmp_label, x_margin=3, y_margin=0)
 
         self.slaves_can_alter = False
@@ -355,7 +369,7 @@ class ExecutableLookCheckable(CheckableWidget):
             self.progress_signal.stop.connect(self.job_stopped)
 
         if default_error:
-            self.progress_signal.error.connect(self.job_stopped)
+            self.progress_signal.error.connect(self.job_error)
 
 class GLOBALDeactivate(GOD):
     """
@@ -863,7 +877,7 @@ class FolderSettingsWidget(CheckableWidget):
                 return True
 
         if reuse_or_destroy(self, create, delete):
-            return
+            return True
 
         class SaveButton(self.ManageButton):
 
@@ -889,6 +903,7 @@ class FolderSettingsWidget(CheckableWidget):
                             break
 
                     self.parent.save_or_delete_this_location(include_location=text)
+                    self.parent.activation_toggle(force=True)
 
         signal = self.global_deactivation_signal.name
         linewidth = self.parent.lineWidth() or 1
@@ -973,6 +988,9 @@ class FolderSettingsWidget(CheckableWidget):
                     text = self.parent.lineedit.text().strip()
                     self.parent.save_or_delete_this_location(exclude_location=text)
 
+                    if not t.config(self.type):
+                        self.parent.activation_toggle(force=False)
+
         def make_delete_button(self):
             signal = self.global_deactivation_signal.name
 
@@ -1001,7 +1019,7 @@ class FolderSettingsWidget(CheckableWidget):
                 self.manage_save_button(create=True, text='REPLACE', make_small=True)
                 self.manage_extend_button(create=True, text='APPEND')
             else:
-                self.manage_save_button(create=True, text='SAVE!?')
+                self.manage_save_button(create=True, text='SAVE')
 
         elif self.text_in_database():
             t.style(self.lineedit, background='black', color='white')
@@ -1315,6 +1333,7 @@ class UniversalSettingsArea(GOD):
     def set_its_tooltip(self, label, dictionary):
         if 'tooltip' in dictionary:
             label.setToolTip(dictionary['tooltip'])
+            t.style(label, tooltip=True, color='white', border='black', background='white')
 
     def make_me_and_giveback_previous(self, settingscanvas, dictionary, headersdictionary, **kwargs):
         widget = self.giveback_specific_widgetclass_or_default(dictionary, **kwargs)
@@ -1458,12 +1477,14 @@ class UniversalSettingsArea(GOD):
             else:
                 t.pos(label.lineedit, coat=label, after=label, x_margin=margin, width=le_width)
 
-            t.pos(settingscanvas, width=label.lineedit.geometry().right(), add=margin)
-            t.pos(label.lineedit, width=label.lineedit.width() - margin - linewidth)
-
             dictionary.update(dict(label=label, le=label.lineedit))
             label.draw_checkable_widget(dictionary)  # todo not pretty some work was offloaded on child
             settingscanvas.widgets.append(dictionary)
+
+            t.pos(settingscanvas, width=label.lineedit.geometry().right(), add=margin)
+            #t.pos(label.lineedit, width=label.lineedit.width() - margin - linewidth)
+            t.pos(label.lineedit, width=label.lineedit, add=-(margin+linewidth))
+
             self.delayed_init(dictionary, force=True)
 
         return settingscanvas

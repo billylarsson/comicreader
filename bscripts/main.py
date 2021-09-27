@@ -6,8 +6,8 @@ from bscripts.comic_drawing  import ComicWidget
 from bscripts.database_stuff import DB, sqlite
 from bscripts.file_handling  import scan_for_new_comics
 from bscripts.tricks         import tech as t
-from bscripts.widgets        import TOOLBatch, TOOLDev, TOOLMaxiMini, TOOLQuit
-from bscripts.widgets        import TOOLRank, TOOLReading, TOOLSearch
+from bscripts.widgets        import TOOLBatch, TOOLMaxiMini, TOOLQuit
+from bscripts.widgets        import TOOLRank, TOOLReading, TOOLSearch,TOOLComicvine
 from bscripts.widgets        import TOOLSettings, TOOLSort, TOOLWEBP
 import os
 import sys
@@ -32,7 +32,6 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
         if t.config('autoupdate_library'):
             t.start_thread(scan_for_new_comics, name='update_library', threads=1)
-
         self.show()
 
         self.create_tool_buttons()
@@ -89,7 +88,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
         print("STARTING TIMER:", sleep, 'seconds')
         # self.le_primary_search.setText("adult collection")
-        self.search_comics()
+        #self.search_comics()
         #import_db()
         t.start_thread(dum, finished_function=kill, name="dfucker")
 
@@ -102,11 +101,10 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             dict(config='tool_settings', widget=TOOLSettings, widthmultiplyer=1),
             dict(config='tool_sorter', widget=TOOLSort, widthmultiplyer=1),
             dict(config='tool_reader', widget=TOOLReading, widthmultiplyer=1),
-            dict(config='tool_dev', widget=TOOLDev, widthmultiplyer=1),
-            dict(config='tool_webp', widget=TOOLRank, widthmultiplyer=1),
-            dict(config='tool_ranking', widget=TOOLWEBP, widthmultiplyer=1),
-            dict(config='tool_batch', widget=TOOLBatch, widthmultiplyer=1),
-
+            dict(config='tool_webp', widget=TOOLWEBP, widthmultiplyer=1),
+            dict(config='tool_ranking', widget=TOOLRank, widthmultiplyer=1),
+            dict(config='tool_comicvine', widget=TOOLComicvine, widthmultiplyer=1.3),
+            dict(config='tool_batch', widget=TOOLBatch, widthmultiplyer=0),
         ]
 
         for count, d in enumerate(dlist):
@@ -119,7 +117,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
             if count == 0:
                 x = self.back.geometry().top() - 2
-                t.pos(label, size=(x, x,), move=(1, 1,))
+                t.pos(label, size=(x*3, x,), move=(1, 1,))
                 label.show_searchwidget()
 
             else:
@@ -131,6 +129,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                     t.pos(label, width=label.width() * d['widthmultiplyer'])
 
             t.set_my_pixmap(label)
+
 
         self.quitter = TOOLQuit(self, type='quit_button')
         self.minmax = TOOLMaxiMini(self, main=self, type='minimaxi')
@@ -314,13 +313,14 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                 self.batch_status.show()
                 w = self.batch_status.fontMetrics().boundingRect(self.batch_status.text()).width()
                 h = self.batch_status.fontMetrics().boundingRect(self.batch_status.text()).height()
-                if self.batcher.height() >= h + 2 or count == 6:
-                    t.pos(self.batch_status, width=w, height=self.batcher)
+                if self.batcher.height() >= h + 6 or count == 6:
+                    t.pos(self.batch_status, width=w+6, left=self.batcher, height=self.batcher)
+                    t.pos(self.batch_status, width=self.batch_status, add=30)
                     break
 
         def create_new_batch_status_label(self):
             if 'batch_status' not in dir(self):
-                self.batch_status = t.pos(new=self, coat=self.batcher, after=self.batcher)
+                self.batch_status = t.pos(new=self, coat=self.batcher, after=self.batcher, x_margin=200)
 
         def deal_with_failed(self, failed):
             if failed:
@@ -333,7 +333,8 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         total = len(self.draw_list_comics)
 
         create_new_batch_status_label(self)
-        self.batch_status.setText(f" SHOWING {drawn} of {total} ")
+        self.batch_status.setText(f" SHOWING {drawn} of {total} (press space for more)")
+        self.batch_status.setAlignment(QtCore.Qt.AlignHCenter|QtCore.Qt.AlignVCenter)
         shrink_text_size(self)
         deal_with_failed(self, faild)
         self.batcher.set_current_position()
@@ -515,6 +516,6 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         if ev.button() == 1:
             self.old_position = ev.globalPos()
 
-    def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
-        if 'old_position' in dir(self):
-            del self.old_position
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
+        self.old_position = event.globalPos()
+

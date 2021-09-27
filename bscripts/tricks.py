@@ -22,20 +22,63 @@ import uuid
 default_dict = dict(
     settings=dict(
         batch_size=dict(active=True, value=10),
-        cover_height=dict(active=True, value=240),
+        cover_height=dict(active=True, value=360),
+
+        sort_by_file_added=dict(active=True, value=None),
+        reverse_sort=dict(active=True, value=None),
+
+        fill_row=dict(active=True, value=None),
+        show_untagged_flag=dict(active=True, value=None),
+        pre_squeeze=dict(active=True, value=None),
+        cover_blob=dict(active=True, value=None),
+        squeeze_mode=dict(active=True, value=None),
+
+        show_NSFW=dict(active=True, value=None),
+        show_comics=dict(active=True, value=None),
+        show_magazines=dict(active=True, value=None),
+
+        reading_mode_one=dict(active=True, value=None),
+
+        webp_4kdownsize=dict(active=False, value=None),
+        webp_md5file=dict(active=False, value=None),
+        webp_quality=dict(active=True, value=80),
+        webp_method=dict(active=True, value=6),
+
+        comictagger_file=dict(active=True, value=None),
+        autoupdate_library=dict(active=True, value=None),
+
+        show_reading_progress=dict(active=True, value=None),
+        show_page_and_size=dict(active=True, value=None),
+        show_ratings=dict(active=True, value=None),
+
 
     ),
     stylesheets=dict(
-        le_primary_search=dict(active=True, value='background-color: rgba(50,50,50,240) ; color: white'),
-        tool_settings=dict(active=True, value='background-color: darkCyan ; color: white'),
-        tool_searcher=dict(active=True, value='background-color: darkMagenta ; color: white'),
-        tool_library=dict(active=True, value='background-color: darkGreen ; color: white'),
-        tool_batch=dict(active=True, value='background-color: blue ; color: white'),
         main=dict(active=True, value='background-color: rgb(15,15,15) ; color: white')
     ),
-    images=dict()
+    images=dict(
+        tool_searcher=dict(active=True, value=['./img/search.webp']),
+        tool_settings=dict(active=True, value=['./img/config.webp']),
+        tool_sorter=dict(active=True, value=['./img/sort.webp']),
+        tool_reader=dict(active=True, value=['./img/mode.webp']),
+        tool_ranking=dict(active=True, value=['./img/rank.webp']),
+        tool_webp=dict(active=True, value=['./img/webp.webp']),
+        tool_batch=dict(active=True, value=['./img/batch.webp']),
+        windows_error=dict(active=True, value=['./img/windows_error.webp']),
+        linux_error=dict(active=True, value=['./img/linux_error.webp']),
+        tool_comicvine=dict(active=True, value=['./img/comicvine.webp']),
+
+    )
 )
 
+if platform.system() == 'Windows':
+    for winrar_path in ['C:\\Program Files\\WinRAR', 'C:\\Program Files (x86)\\WinRAR']:
+        if os.path.exists(winrar_path):
+            default_dict['settings'].update(dict(winrar_support=dict(active=True, value=[winrar_path])))
+
+    for zip7_path in ['C:\\Program Files\\7-Zip', 'C:\\Program Files (x86)\\7-Zip']:
+        if os.path.exists(zip7_path):
+            default_dict['settings'].update(dict(zip7_support=dict(active=True, value=[zip7_path])))
 
 class DIRECTPOSITION:
     @staticmethod
@@ -434,31 +477,24 @@ class DIRECTPOSITION:
 
 POS = DIRECTPOSITION()
 
-# def new_pos(widget=None, kwgs=None, new=False, **kwargs):
-#     if not kwgs:
-#         kwgs = [kwargs]
-#
-#     if new:
-#         widget = QtWidgets.QLabel(new, lineWidth=0, midLineWidth=0)
-#         widget.show()
-#
-#     for args in kwgs:
-#         for k,v in args.items():
-#             fn = getattr(POS, k, False)
-#
-#             if not fn:
-#                 continue
-#
-#             fn(widget, v, kwgs)
-#
-#     return widget
-
 class ViktorinoxTechClass:
     def __init__(self):
         self.techdict = {}
 
     @staticmethod
     def pos(widget=None, kwgs=None, new=False, **kwargs):
+        def subraction_to_addition():
+            """
+            if 'sub' in kwargs it will make sub into add and makes sure the value
+            is negative due human logic, yeah this can become buggy later on
+            """
+            if 'sub' in kwargs:
+                if kwargs['sub'] > 0:
+                    kwargs['add'] = -kwargs['sub']
+                else:
+                    kwargs['add'] = kwargs['sub']
+
+        subraction_to_addition()
 
         if not kwgs:
             kwgs = [kwargs]
@@ -477,141 +513,6 @@ class ViktorinoxTechClass:
                 fn(widget, v, kwgs)
 
         return widget
-    # @staticmethod
-    # def pos(widget=None,
-    #         new=None,
-    #         margin=0,
-    #         inside=None,
-    #         coat=None,
-    #         size=None, add=0,
-    #         width=None, height=None,
-    #         left=None, right=None,
-    #         below=None, above=None,
-    #         leftof=None, rightof=None,
-    #         move=None,
-    #         x_margin=0, y_margin=0,
-    #         background=None,
-    #         center=None,
-    #         ):
-    #     """
-    #     :param widget: changing widget
-    #     :param inside: one widget lives inside another   -> setGeometry()
-    #     :param coat: both widgets lives inside the same -> setGeometry()
-    #     :param size: tuple (w,h) or another widget       -> resize()
-    #     :param add: int usable with resize for exapnd or contract
-    #     :param left/right: another widget
-    #     :param width/height: int or another widget
-    #     :param below/above: another widget
-    #     :param left/right: another widget
-    #     :param move: tuple (-24, +16) in relation to current.geometry()
-    #     :param background: string/object sets background color (or entire objects stylesheet)
-    #     :param x_margin/y_margin: int space between (above,below,left,right only)
-    #     """
-    #     def geochange(x, y, w, h):
-    #         widget.setGeometry(int(x), int(y), int(w), int(h))
-    #
-    #     def geosize(w, h):
-    #         widget.resize(int(w), int(h))
-    #
-    #     if new != None:
-    #         widget = QtWidgets.QLabel(new)
-    #     # -------------------[INSIDE/COAT]
-    #     if inside != None:  # one widget lives inside the other
-    #         x = margin
-    #         y = margin
-    #         w = inside.width() - margin * 2
-    #         h = inside.height() - margin * 2
-    #         geochange(x, y, w, h)
-    #     elif coat != None:  # reside in same widget
-    #         x = coat.geometry().left() + margin
-    #         y = coat.geometry().top() + margin
-    #         w = coat.width() - margin * 2
-    #         h = coat.height() - margin * 2
-    #         geochange(x, y, w, h)
-    #     # -------------------[WIDTH]
-    #     if type(width) in {int, float}:
-    #         geosize(width + add, widget.height())
-    #     elif width != None:
-    #         geosize(width.width() + add, widget.height())
-    #     # -------------------[HEIGHT]
-    #     if type(height) in {int, float}:
-    #         geosize(widget.width(), height + add)
-    #     elif height != None:
-    #         geosize(widget.width(), height.height() + add)
-    #     # -------------------[SIZE]
-    #     if type(size) == tuple or type(size) == list:
-    #         geosize(size[0] + add, size[1] + add)
-    #     elif size != None:
-    #         geosize(size.width() + add, size.height() + add)
-    #     # -------------------[LEFT/RIGHT]
-    #     if left != None:
-    #         if type(left) in {int, float}:
-    #             x = left + x_margin
-    #         else:
-    #             x = left.geometry().left() + x_margin
-    #         if not right:
-    #             geochange(x, widget.geometry().top(), widget.width(), widget.height())
-    #         else:
-    #             if type(right) in {int, float}:
-    #                 w = right - x_margin
-    #             else:
-    #                 w = right.geometry().right() - x_margin * 2
-    #             geochange(x, widget.geometry().top(), w - x, widget.height())
-    #     elif right != None:
-    #         if type(right) in {int, float}:
-    #             x = right - widget.width() - x_margin + 1
-    #         else:
-    #             x = right.geometry().right() - widget.width() - x_margin + 1 # else same pixel
-    #         geochange(x, widget.geometry().top(), widget.width(), widget.height())
-    #     # -------------------[ABOVE/BELOW]
-    #     if above != None:
-    #         if type(above) in {int, float}:
-    #             y = above - widget.height() - y_margin + 1
-    #         else:
-    #             y = above.geometry().top() - widget.height() - y_margin + 1
-    #         geochange(widget.geometry().left(), y, widget.width(), widget.height())
-    #     elif below != None:
-    #         if type(below) in {int, float}:
-    #             y = below + y_margin
-    #         else:
-    #             y = below.geometry().bottom() + y_margin + 1 # else same pixel
-    #         geochange(widget.geometry().left(), y, widget.width(), widget.height())
-    #     # -------------------[LEFTOF/RIGHTOF]
-    #     if leftof != None:
-    #         x = leftof.geometry().left() - widget.width() - x_margin
-    #         y = leftof.geometry().top()
-    #         geochange(x, y, widget.width(), widget.height())
-    #     elif rightof != None:
-    #         x = rightof.geometry().right() + x_margin + 1
-    #         y = rightof.geometry().top()
-    #         geochange(x, y, widget.width(), widget.height())
-    #     # -------------------[MOVE]
-    #     if move and len(move) == 2:
-    #         x = widget.geometry().left() + move[0]
-    #         y = widget.geometry().top() + move[1]
-    #         w = widget.width()
-    #         h = widget.height()
-    #         geochange(x,y,w,h)
-    #     # -------------------[MOVE]
-    #     if center and widget:
-    #         pointa = center[0].geometry().left()
-    #         pointb = center[1].geometry().right()
-    #
-    #         if pointb > pointa:
-    #             rest = (pointb - pointa) - widget.width()
-    #             if rest > 1:
-    #                 x = center[0].geometry().left() + (rest * 0.5)
-    #                 geochange(x, widget.geometry().top(), widget.width(), widget.height())
-    #
-    #     if background != None:
-    #         if type(background) == str:
-    #             widget.setStyleSheet('background-color:' + background)
-    #         else:
-    #             widget.setStyleSheet(background.styleSheet())
-    #
-    #     if new != None:
-    #         widget.show()
-    #         return widget
 
 
     @staticmethod
@@ -766,11 +667,9 @@ class ViktorinoxTechClass:
 
     @staticmethod
     def md5_hash_string(string=None, random=False, upper=False):
-        if random:
-            if string:
-                string = string + str(uuid.uuid4()) + str(time.time()) + 'how_much_is_the_fish?'
-            else:
-                string = str(uuid.uuid4()) + str(time.time()) + 'how_much_is_the_fish?'
+        if random or not string and not random:
+            salt = 'how_much_is_the_fish?'
+            string = str(uuid.uuid4()) + str(time.time()) + salt + (string or "")
 
         hash_object = hashlib.md5(string.encode())
         rv = hash_object.hexdigest()
@@ -1317,6 +1216,7 @@ class ViktorinoxTechClass:
         """
 
         def make_stylesheet(widget):
+
             if widget.styleSheet() and widget.styleSheet().find('{') > -1: # meaning we've processed this before
                 dictstyle = make_dictstylesheet(widget.styleSheet())
                 return dictstyle
@@ -1332,7 +1232,10 @@ class ViktorinoxTechClass:
                     stylesheet = widget.metaObject().className() + '{' + stylesheet + '}'
             else:
                 stylesheet = make_string_stylesheet([])
-                stylesheet = widget.metaObject().className() + '{' + stylesheet + '}'
+                if tooltip:
+                    stylesheet = 'QToolTip{' + stylesheet + '}'
+                else:
+                    stylesheet = widget.metaObject().className() + '{' + stylesheet + '}'
 
             return stylesheet
 
@@ -1353,6 +1256,7 @@ class ViktorinoxTechClass:
 
                 if tooltip and head != 'QToolTip': # no change to 'base' stylesheet
                     stylesdict[head] = '{' + tail + '}'
+
                 elif not tooltip: # makes new as if nothing happened
                     stylelist = tail.split(';')
                     newtail = make_string_stylesheet(stylelist)

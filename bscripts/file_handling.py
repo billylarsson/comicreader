@@ -1,11 +1,13 @@
 import pathlib
-from PIL                    import Image
+from PIL                    import Image, ImageFont
 from pdf2image              import convert_from_path, pdfinfo_from_path
 from bscripts.database_stuff import DB, sqlite
 from bscripts.tricks         import tech as t
 from zipfile                import BadZipFile, ZipFile
 import copy
+import subprocess
 import concurrent.futures
+from PIL           import  Image, ImageDraw, UnidentifiedImageError
 import platform
 import os
 import pickle
@@ -62,6 +64,27 @@ def unzipper(zip_file=None, database=None, index=0, filename=None):
         else:
             return False, good_files, bad_files, all_files
 
+    def add_winrar_7zip_to_path(configstring):
+        if platform.system() == 'Windows':
+            app_path = t.config(configstring, curious=True)
+
+            if type(app_path) == list:
+                app_path = app_path[0]
+
+            if type(app_path) != str:
+                return False
+
+            if os.environ["PATH"].find(app_path) == -1:
+                if len(app_path) > 0 and os.path.exists(app_path):
+
+                    if platform.system() == 'Windows':
+                        os.environ["PATH"] += ';' + app_path
+                    else:
+                        os.environ["PATH"] += ':' + app_path
+                return True
+            else:
+                return t.config(configstring)
+
     files_in_the_zip = 1000
     file_to_extract = None
 
@@ -104,25 +127,69 @@ def unzipper(zip_file=None, database=None, index=0, filename=None):
     ext = ext[-1]
     loc_destination = t.separate_file_from_folder(extract_folder + '/' + extract_file + '.' + ext)
 
-    if platform.system() == "Windows":
-        if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
-            return loc_destination.full_path
+    if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
+        return loc_destination.full_path
 
-        try:
-            zf = ZipFile(loc_source.full_path)
-            single_file = zf.getinfo(file_to_extract)
-            single_file.filename = loc_destination.filename
-            zf.extract(single_file, loc_destination.folder)
-            if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
-                return loc_destination.full_path
+    try:
+        zf = ZipFile(loc_source.full_path)
+        single_file = zf.getinfo(file_to_extract)
+        single_file.filename = loc_destination.filename
+        zf.extract(single_file, loc_destination.folder)
 
-        except BadZipFile:
+    except BadZipFile:
+        if platform.system() == 'Windows':
+
+            add_winrar_7zip_to_path('winrar_support')  # loads winrar to enviorment path
+            add_winrar_7zip_to_path('zip7_support')  # loads 7zip to enviorment path
+
+            if t.config('winrar_support'):
+                try:
+                    rf = rarfile.RarFile(loc_source.full_path)
+                    single_file = rf.getinfo(file_to_extract)
+                    hack_unrar(rf, single_file, loc_destination.full_path)
+
+                except rarfile.NotRarFile:
+                    return False
+                except rarfile.BadRarFile:
+                    return False
+                except:
+                    return False
+
+            elif t.config('zip7_support'):
+                zip7 = t.config('zip7_support')
+                zip7 = t.separate_file_from_folder(zip7[0] + '\\' + '7z.exe')
+
+                if not os.path.exists(zip7.full_path):
+                    return False
+
+                substring = f'"{zip7.full_path}" e -y -so "{loc_source.full_path}" "{file_to_extract}" > "{loc_destination.full_path}"'
+                tmp_bat = t.tmp_file(new=True, extension='bat')
+
+                with open(tmp_bat, 'w') as batfile:
+                    batfile.write(substring)
+
+                theproc = subprocess.Popen(tmp_bat)
+                theproc.communicate()
+
+                stopper = time.time() + 10
+
+                while not os.path.exists(loc_destination.full_path):
+                    time.sleep(0.1)
+                    if time.time() > stopper:
+                        break
+
+                os.remove(tmp_bat)
+
+            else:
+                return False
+
+
+        else:
+
             try:
                 rf = rarfile.RarFile(loc_source.full_path)
                 single_file = rf.getinfo(file_to_extract)
                 hack_unrar(rf, single_file, loc_destination.full_path)
-                if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
-                    return loc_destination.full_path
 
             except rarfile.NotRarFile:
                 return False
@@ -130,41 +197,15 @@ def unzipper(zip_file=None, database=None, index=0, filename=None):
                 return False
             except:
                 return False
-        except:
-            return False
+    except:
+        return False
 
+    if not os.path.exists(loc_destination.full_path):
+        return False
+    elif os.path.getsize(loc_destination.full_path) == 0:
+        os.remove(loc_destination.full_path)
+        return False
     else:
-        if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
-            return loc_destination.full_path
-
-        try:
-            zf = ZipFile(loc_source.full_path)
-            single_file = zf.getinfo(file_to_extract)
-            single_file.filename = loc_destination.filename
-            zf.extract(single_file, loc_destination.folder)
-
-        except BadZipFile:
-            try:
-                rf = rarfile.RarFile(loc_source.full_path)
-                single_file = rf.getinfo(file_to_extract)
-                hack_unrar(rf, single_file, loc_destination.full_path)
-
-            except rarfile.NotRarFile:
-                return False
-            except rarfile.BadRarFile:
-                return False
-            except:
-                return False
-
-        except:
-            return False
-        finally:
-            if not os.path.exists(loc_destination.full_path):
-                return False
-            elif os.path.getsize(loc_destination.full_path) == 0:
-                os.remove(loc_destination.full_path)
-                return False
-
         return loc_destination.full_path
 
 def generate_cover_from_image_file(path,
@@ -269,14 +310,29 @@ def check_for_pdf_assistance(pdf_file, index=0, pagecount=False, dry_run=False, 
     if not loc or not loc.ext.lower() == 'pdf':
         return False
 
-    poppler_path = t.config('pdf_support')
-    if type(poppler_path) == list:
-        poppler_path = poppler_path[0]
-    if type(poppler_path) != str:
-        poppler_path = None
+    def get_poppler_path():
+        poppler_path = t.config('pdf_support')
+        if type(poppler_path) == list:
+            poppler_path = poppler_path[0]
+
+            if len(poppler_path) > 0 and os.path.exists(poppler_path):
+
+                if os.environ["PATH"].find(poppler_path) == -1:
+                    if platform.system() == 'Windows':
+                        os.environ["PATH"] += ';' + poppler_path
+                    else:
+                        os.environ["PATH"] += ':' + poppler_path
+
+                return poppler_path
+
+    poppler_path = get_poppler_path() or None
 
     if pagecheck or pagecount:
-        rv = pdfinfo_from_path(pdf_file, poppler_path=poppler_path)
+        try:
+            rv = pdfinfo_from_path(pdf_file, poppler_path=poppler_path)
+        except:
+            return False
+
         if rv and rv['Pages'] and index < rv['Pages']:
             if pagecount:
                 return rv['Pages']
@@ -313,8 +369,6 @@ def check_for_pdf_assistance(pdf_file, index=0, pagecount=False, dry_run=False, 
         loc = t.separate_file_from_folder(image_list[0])
         return loc.full_path
 
-
-
 def get_thumbnail_from_zip_or_database(zip_file=None, database=None, index=0, proxy=True, store=False, height=300):
     """
     if file already present as file or blob in the databse those are returned
@@ -343,12 +397,20 @@ def get_thumbnail_from_zip_or_database(zip_file=None, database=None, index=0, pr
 
     elif zip_file:
         file = unzipper(zip_file=zip_file, database=database, index=index)
+
         if file and os.path.exists(file):
             thumbnail_path = generate_cover_from_image_file(
                 file, height=height, database=database, store=store)
             return thumbnail_path
+
         elif proxy:
-            print("You forgot to code cover-proxy!")
+            if platform.system() == 'Windows':
+                file_list = t.config('windows_error', image=True)
+            else:
+                file_list = t.config('linux_error', image=True)
+
+            if type(file_list) == list and os.path.exists(file_list[0]):
+                return file_list[0]
 
 class FileArchiveManager:
     def __init__(self, path=None, database=None, md5=False, autoinit=True):
@@ -480,6 +542,9 @@ class FileArchiveManager:
 
             if loc.filename.lower() == 'comicinfo.xml':
                 xmlfile_location = unzipper(path, filename=i)
+
+                if not xmlfile_location:
+                    continue
 
                 with open(xmlfile_location, 'r', encoding="utf-8") as f:
                     content = list(f)
@@ -991,7 +1056,46 @@ def concurrent_cbx_to_webp_convertion(cbxfile, signalgroup='_cbx_to_webp', comic
             except rarfile.BadRarFile:
                 signal.error.emit(progressdict)
                 return False
+
+            except: # winrar probably not installed?
+                signal.error.emit(progressdict)
+                return False
+
         return True
+
+    def delete_spam(tmpfolder):
+        if not t.config('delete_spam'):
+            return True
+
+        white_extensions = {'png', 'jpg', 'bmp', 'gif', 'jpeg', 'webp', 'xml', 'md5'}
+        good_files = []
+
+        for walk in os.walk(tmpfolder):
+            for file in walk[2]:
+                loc = t.separate_file_from_folder(walk[0] + '/' + file)
+
+                if loc.ext.lower() not in white_extensions:
+                    os.remove(loc.full_path)
+                    continue
+
+                good_files.append(loc)
+
+        max = 3 # separeates files if less tham max begins with z or if less than max contains the word tag
+        for gatechecker in {'z', 'tag'}:
+            check = 0
+            for times in range(2):
+                for count in range(len(good_files) -1, -1, -1):
+                    loc = good_files[count]
+
+                    if gatechecker == 'z' and loc.filename[0].lower() == gatechecker \
+                            or gatechecker == 'tag' and loc.filename.lower().find(gatechecker) > -1:
+
+                        if times == 0:
+                            check += 1
+
+                        elif times == 1 and check <= max:
+                            os.remove(loc.full_path)
+
 
     def generate_loclist(tmpfolder):
         loc_files_to_convert = []
@@ -1021,6 +1125,8 @@ def concurrent_cbx_to_webp_convertion(cbxfile, signalgroup='_cbx_to_webp', comic
 
     if not extract_all_to(cbxfile=cbxfile, tmpfolder=tmpfolder):
         return False
+
+    delete_spam(tmpfolder=tmpfolder)
 
     loc_files_to_convert = generate_loclist(tmpfolder)
 

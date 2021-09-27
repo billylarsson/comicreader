@@ -1,3 +1,4 @@
+import platform
 from PyQt5                        import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore                 import QPoint
 from bscripts.file_handling       import generate_cover_from_image_file
@@ -11,6 +12,7 @@ from script_pack.settings_widgets import FolderSettingsAndGLobalHighlight
 from script_pack.settings_widgets import GLOBALDeactivate
 from script_pack.settings_widgets import HighlightRadioBoxGroup
 from script_pack.settings_widgets import UniversalSettingsArea
+from script_pack.preset_colors import *
 import os
 import sys
 
@@ -21,11 +23,11 @@ class POPUPTool(GLOBALDeactivate):
         super().__init__(place=place, *args, **kwargs)
 
         self.directives['activation'] = [
-            dict(object=self, background='white', color='white'),
+            dict(object=self, background='rgba(200,50,50,150)'),
         ]
 
         self.directives['deactivation'] = [
-            dict(object=self, background='gray', color='white'),
+            dict(object=self, background=TXT_DARKTRANS),
         ]
 
         self.activation_toggle(force=False, save=False)
@@ -73,12 +75,13 @@ class TOOLSearch(POPUPTool):
         self.activation_toggle(force=True, save=False)
 
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-        if ev.button() == 1:
-            self.activation_toggle(save=False)
-            self.show_searchwidget()
-
-        if ev.button() == 2:
-            self.main.search_comics()
+        self.main.search_comics()
+        # if ev.button() == 1:
+        #     self.activation_toggle(save=False)
+        #     self.show_searchwidget()
+        #
+        # if ev.button() == 2:
+        #     self.main.search_comics()
 
     def show_searchwidget(self):
         """
@@ -155,7 +158,7 @@ class TOOLSettings(POPUPTool):
                     self.activation_toggle()
                     self.signalgroup.checkgroup_master.emit(self.type)
 
-        class PDFPoppler(FolderSettingsAndGLobalHighlight):
+        class PATHExtenders(FolderSettingsAndGLobalHighlight):
             def special(self):
                 if self.activated:
                     rv = t.config(self.type, curious=True)
@@ -166,7 +169,6 @@ class TOOLSettings(POPUPTool):
                         t.style(self.button, background='orange')
                 else:
                     t.style(self.button, background='gray')
-
                 return True
 
             def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
@@ -275,9 +277,20 @@ class TOOLSettings(POPUPTool):
 
         dict_with_pdf_things = [
             dict(
-                text = 'PDF SUPPORT', textsize=TEXTSIZE, widget=PDFPoppler,
+                text = 'PDF SUPPORT', textsize=TEXTSIZE, widget=PATHExtenders,
                 tooltip = "this may not be a plesent experience since it depends on poppler path. if your'e on windows, i'd say you doomed if you dont know what you're doing and i suggest you leave this in the red",
                 kwargs = dict(type='pdf_support', multiple_folders=False)),
+        ]
+
+        dict_with_unpackers = [
+            dict(
+                text = 'WinRAR', textsize=TEXTSIZE, widget=PATHExtenders,
+                tooltip = "if you're on windows and want CBR file support you need to either have WinRAR.exe in you systems path or provide it here",
+                kwargs = dict(type='winrar_support', multiple_folders=False)),
+            dict(
+                text='7-Zip', textsize=TEXTSIZE, widget=PATHExtenders,
+                tooltip="alternative to WinRAR",
+                kwargs=dict(type='zip7_support', multiple_folders=False)),
         ]
 
         dict_with_autoupdate = [
@@ -318,6 +331,7 @@ class TOOLSettings(POPUPTool):
         blackgray3 = self.main.settings.make_this_into_folder_settings(headersdictionary=dict_with_paths)
         blackgray4 = self.main.settings.make_this_into_LCDrow(headersdictionary=dict_with_lcdrow)
         blackgray5 = self.main.settings.make_this_into_folder_settings(headersdictionary=dict_with_pdf_things)
+        blackgray5_1 = self.main.settings.make_this_into_folder_settings(headersdictionary=dict_with_unpackers)
         blackgray6 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_update_hash, canvaswidth=350)
         blackgray7 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_md5_comic)
         blackgray8 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_with_autoupdate)
@@ -330,7 +344,8 @@ class TOOLSettings(POPUPTool):
         t.pos(blackgray3, below=blackgray6, left=blackgray6, y_margin=10)
         t.pos(blackgray4, below=blackgray2, y_margin=10)
         t.pos(blackgray5, left=blackgray3, below=blackgray3, y_margin=10)
-        t.pos(blackgray8, left=blackgray5, below=blackgray5, y_margin=10)
+        t.pos(blackgray5_1, left=blackgray3, below=blackgray5, y_margin=10)
+        t.pos(blackgray8, left=blackgray5, below=blackgray5_1, y_margin=10)
         t.pos(blackgray7, below=blackgray8, y_margin=10, left=blackgray8)
 
         t.pos(header, right=blackgray3, bottom=blackgray6)
@@ -640,12 +655,12 @@ class TOOLRank(POPUPTool):
 
             self.directives['activation'] = [
                 dict(object=self.textlabel, color='white'),
-                dict(object=self.button, background='cyan', color='cyan'),
+                dict(object=self.button, background=BTN_SHINE, color=BTN_SHINE),
             ]
 
             self.directives['deactivation'] = [
-                dict(object=self.textlabel, color='gray'),
-                dict(object=self.button, background='darkCyan', color='darkCyan'),
+                dict(object=self.textlabel, color=BTN_SHADE),
+                dict(object=self.button, background=BTN_SHADE, color=BTN_SHADE),
             ]
 
         def special(self):
@@ -672,7 +687,7 @@ class TOOLRank(POPUPTool):
     def show_volumebuttons(self):
         d =[
             dict(
-                text='SHOW EARLIEST ISSUE OF HIGHEST RATED VOLUMES', textsize=TEXTSIZE,
+                text='SHOW YOUR HIGHEST RATED VOLUMES', textsize=TEXTSIZE,
                 widget=self.ShowAllRated, button_width_factor=2.5, post_init=True,
                 text_color='gray', button_color='darkCyan',
                 kwargs=dict(type='all_volumes_with_rated_issue', extravar=dict(
@@ -680,7 +695,7 @@ class TOOLRank(POPUPTool):
                 ))
             ),
             dict(
-                text='SHOW ONLY THOSE WITH AT LEAST ONE UNREAD ISSUE', textsize=TEXTSIZE,
+                text='SHOW THOSE WITH UNREAD ISSUES', textsize=TEXTSIZE,
                 widget=self.ShowAllRatedUnread, button_width_factor=2.5, post_init=True,
                 text_color='gray', button_color='darkCyan',
                 kwargs=dict(type='only_volumes_with_unread_issue', extravar=dict(
@@ -763,35 +778,6 @@ class TOOLQuit(POPUPTool):
             else:
                 self.main.fuck_this_duck = 1
 
-class TOOLDev(POPUPTool):
-    def __init__(self, place, *args, **kwargs):
-        super().__init__(place, *args, **kwargs)
-        self.activated = False
-
-    def show_dev_tools(self):
-        d = [
-            dict(
-                text='PDF-WEPB READ THREAD',
-                tooltip='could be very unsatesfying reading experience',
-                kwargs=dict(type='single_pdf2webp')),
-
-        ]
-        self.blackgray = UniversalSettingsArea(self.main, activation_toggle=self.activation_toggle)
-        self.blackgray.make_this_into_checkable_buttons(d)
-        self.blackgray.expand_me(self.blackgray.blackgrays)
-        t.pos(self.blackgray, below=self, left=self, y_margin=10)
-
-    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-        self.activation_toggle(save=False)
-
-        if self.activated:
-            self.show_dev_tools()
-
-        elif 'blackgray' in dir(self):
-            self.blackgray.close()
-            del self.blackgray
-
-
 class TOOLReading(POPUPTool):
 
     def viewmodes(self):
@@ -856,6 +842,79 @@ class TOOLReading(POPUPTool):
             self.blackgray.close()
             del self.blackgray
 
+class TOOLComicvine(POPUPTool):
+    class APIKey(FolderSettingsAndGLobalHighlight):
+        def post_init(self):
+            self.manage_delete_button(create=True, text="")
+            self.delete_button.mousePressEvent = self.delete_cv_key
+
+            key = t.config(self.type, curious=True)
+
+            if type(key) == str:
+                self.lineedit.setText('X' * len(key))
+
+            self.lineedit.textChanged.connect(self.text_changed)
+
+        def text_changed(self):
+            text = self.lineedit.text().strip()
+
+            if not text:
+                self.manage_save_button(delete=True)
+
+            elif text.lower().find('bruce wayne') != -1:
+                key = t.config(self.type, curious=True)
+                if type(key) == str and key.lower().find('bruce wayne') == -1:
+                    self.lineedit.setText(key)
+
+            elif not self.manage_save_button(create=True, text='SAVE'):
+                self.save_button.mousePressEvent = self.save_api_key
+
+        def save_api_key(self, *args, **kwargs):
+            text = self.lineedit.text().strip()
+
+            if len(text) > 30 and text.find(' ') == -1:
+                t.save_config(self.type, text)
+                self.lineedit.setText('API KEY SAVED!')
+                self.manage_save_button(delete=True)
+
+        def delete_cv_key(self, *args, **kwargs):
+            t.save_config(self.type, None, delete=True)
+
+    def show_cv_settings(self):
+
+        self.blackgray = UniversalSettingsArea(self.main)
+
+        d1 = [
+            dict(
+                text='API KEY',
+                widget=self.APIKey,
+                shrink_to_text=True,
+                settingscanvas=self.blackgray,
+                multiple_folders=False,
+                hide_button=True,
+                alignment=True,
+                kwargs=dict(
+                    type='comicvine_key',
+                )
+            )
+        ]
+        header = self.blackgray.make_header(title='COMICVINE')
+        set1 = self.blackgray.make_this_into_folder_settings(d1)
+        t.pos(set1, below=header, y_margin=3)
+        t.pos(self.blackgray, under=self, move=[10,10])
+        self.blackgray.expand_me([x for x in self.blackgray.blackgrays])
+
+
+    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+        self.activation_toggle(save=False)
+
+        if self.activated:
+            self.show_cv_settings()
+
+        elif 'blackgray' in dir(self):
+            self.blackgray.close()
+            del self.blackgray
+
 class TOOLWEBP(POPUPTool):
     def show_webp_settings(self):
         d1 = [
@@ -896,6 +955,14 @@ class TOOLWEBP(POPUPTool):
                 kwargs=dict(
                     type='webp_md5file'
             )),
+            dict(
+                text='DELETE SPAM',
+                tooltip='be cautious, this will remove what it thinks is spam, not what you think is spam!',
+                textsize=TEXTSIZE,
+
+                kwargs=dict(
+                    type='delete_spam'
+                )),
             dict(
                 text='DELETE SOURCE',
                 textsize=TEXTSIZE,
