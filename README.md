@@ -1,5 +1,6 @@
 # comicreader
 under construction, it will run and you can do alot but if you break something dont blame me
+![Untitled](https://user-images.githubusercontent.com/59517785/135051548-e75acdce-37d2-4a0d-9aff-417b7e23d26b.png)
 
 
 INSTALLATION:
