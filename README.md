@@ -14,6 +14,7 @@ pip install -r requirements.txt --user
 Microsoft Windows
 3.1: You may want to install WinRAR and provide the path in this programs configurations area.
 https://www.rarlab.com/download.htm
+
 3.2: You may want to install 7-Zip instead of WinRAR (but as for now WinRAR is more compatible even though I personally oppose WinRAR for other reasons)
 https://www.7-zip.org/download.html
 
