@@ -41,20 +41,20 @@ READ_C_1 = 'black'
 READ_B_0 = 'rgb(120,120,120)'
 READ_C_0 = 'rgb(60,60,60)'
 
-import os
-from bscripts.tricks import tech as t
-files = []
-rows = 0
-filecount = 0
-for walk in os.walk('/home/plutonergy/Coding/PythonComicreader'):
-    files += [walk[0] + '/' + x for x in walk[2]]
-for i in files:
-    loc = t.separate_file_from_folder(i)
-    if loc.ext.lower() == 'py':
-        filecount +=1
-        with open(loc.full_path, 'r') as f:
-            l = list(f)
-            rows += len(l)
-
-print(rows, filecount)
+# import os
+# from bscripts.tricks import tech as t
+# files = []
+# rows = 0
+# filecount = 0
+# for walk in os.walk('/home/plutonergy/Coding/PythonComicreader'):
+#     files += [walk[0] + '/' + x for x in walk[2]]
+# for i in files:
+#     loc = t.separate_file_from_folder(i)
+#     if loc.ext.lower() == 'py':
+#         filecount +=1
+#         with open(loc.full_path, 'r') as f:
+#             l = list(f)
+#             rows += len(l)
+#
+# print(rows, filecount)
 

@@ -920,12 +920,9 @@ class ViktorinoxTechClass:
             return complete_dir
 
     @staticmethod
-    def correct_broken_font_size(object, presize=True, maxsize=14, minsize=5, x_margin=10, y_margin=0, savelarge=False):
+    def correct_broken_font_size(object, presize=True, maxsize=14, minsize=5, x_margin=10, y_margin=0):
         if presize:
             tech.style(object, font=str(maxsize) + 'pt')
-
-        if not savelarge:
-            minsize = 5
 
         for count in range(maxsize,minsize,-1):
             object.show()
@@ -1373,7 +1370,7 @@ class ViktorinoxTechClass:
                 else:
                     return False
 
-    def signals(self, name=None, reset=False, delete=False):
+    def signals(self, name=None, reset=False, delete_afterwards=False, delete=False):
         if 'signals' not in self.techdict:
             self.techdict.update(dict(signals={ }))
 
@@ -1394,6 +1391,11 @@ class ViktorinoxTechClass:
             self.techdict['signals'][name] = WorkerSignals()
             self.techdict['signals'][name].name = name
 
+        if delete_afterwards:
+            rv = self.techdict['signals'][name]
+            self.techdict['signals'].pop(name)
+            return rv
+
         return self.techdict['signals'][name]
 
 tech = ViktorinoxTechClass()
@@ -1413,6 +1415,9 @@ class WorkerSignals(QObject):
     neighbour = pyqtSignal(dict)
     pagenumbers = pyqtSignal(tuple)
     startjob = pyqtSignal(dict)
+    volumelabel = pyqtSignal(dict)
+    buildrelative = pyqtSignal(dict)
+    pickrelatives = pyqtSignal(list)
 
 class Worker(QRunnable):
     def __init__(self, function):
