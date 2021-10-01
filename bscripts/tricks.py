@@ -51,6 +51,8 @@ default_dict = dict(
         show_page_and_size=dict(active=True, value=None),
         show_ratings=dict(active=True, value=None),
 
+        shade_surroundings=dict(active=True, value=None),
+
 
     ),
     stylesheets=dict(
@@ -67,7 +69,9 @@ default_dict = dict(
         windows_error=dict(active=True, value=['./img/windows_error.webp']),
         linux_error=dict(active=True, value=['./img/linux_error.webp']),
         tool_comicvine=dict(active=True, value=['./img/comicvine.webp']),
-
+        download_error=dict(active=True, value=['./img/download_error.webp']),
+        quit_button=dict(active=True, value=['./img/quit.webp']),
+        minimaxi=dict(active=True, value=['./img/minmax.webp']),
     )
 )
 
@@ -351,7 +355,7 @@ class DIRECTPOSITION:
         :param preceeding_widget: must be a widget
         """
         x_margin = POS.extra(x_margin=kwgs)
-        x = following_widget.geometry().left() - working_widget.height() - 1 - x_margin  # subtracting first pixel
+        x = following_widget.geometry().left() - working_widget.width() - 1 - x_margin  # subtracting first pixel
         y = following_widget.geometry().top()
         w = working_widget.width()
         h = working_widget.height()
@@ -596,17 +600,21 @@ class ViktorinoxTechClass:
         return header
 
     @staticmethod
-    def download_file(url, file=None, header=None):
+    def download_file(url, file=None, reuse=True, header=None):
         """
         downloads a file, if file already exists, its is NOT redownloaded
         if the downloaded file is 0 bytes, its removed, returning False
         :param url: string
         :param file: string, None (autogenerate tmpfile)
+        :param header: will use default header if not specified
         :return: bool
         """
 
         if not file:
-            file = tech.tmp_file(new=True)
+            if reuse:
+                file = tech.tmp_file(file_of_interest=url, reuse=True, hash=True)
+            else:
+                file = tech.tmp_file(new=True)
 
         loc = tech.separate_file_from_folder(file)
 
@@ -978,21 +986,49 @@ class ViktorinoxTechClass:
         return drawlist
 
     @staticmethod
+    def sort_by_number(fromlist, key, reverse=False):
+        rvdict = {}
+        for i in fromlist:
+
+            if i[key] == '½':
+                rvdict[i] = 0.5
+
+            elif i[key] != None:
+                try:
+                    rvdict[i] = float(i[key])
+                except TypeError:
+                    rvdict[i] = 0
+                except ValueError:
+                    rvdict[i] = 0
+            else:
+                rvdict[i] = 999999999
+
+        rv = []
+        for db,_ in {k: v for k, v in sorted(rvdict.items(), key=lambda item: item[1], reverse=reverse)}.items():
+            rv.append(db)
+
+        return rv
+
+    @staticmethod
     def uni_sort(fromlist):
         if not fromlist:
             return fromlist
 
+        rest = None
         reverse = tech.config('reverse_sort') or False
 
         if tech.config('sort_by_size'):
+            rest = [x for x in fromlist if not x[DB.comics.file_size]]
             fromlist = [x for x in fromlist if x[DB.comics.file_size]]
             fromlist.sort(key=lambda x: x[DB.comics.file_size], reverse=reverse)
 
         elif tech.config('sort_by_file_added'):
+            rest = [x for x in fromlist if not x[DB.comics.file_date]]
             fromlist = [x for x in fromlist if x[DB.comics.file_date]]
             fromlist.sort(key=lambda x: x[DB.comics.file_date], reverse=reverse)
 
         elif tech.config('sort_by_rating'):
+            rest = [x for x in fromlist if not x[DB.comics.rating]]
             fromlist = [x for x in fromlist if x[DB.comics.rating]]
             fromlist.sort(key=lambda x: x[DB.comics.rating], reverse=reverse)
 
@@ -1002,8 +1038,8 @@ class ViktorinoxTechClass:
         else:
             sorted_list = []
             tmp = {}
-            for i in fromlist:
 
+            for i in fromlist:
                 highest = i[DB.comics.local_path].rfind('/')
                 if i[DB.comics.local_path].find('\\') > highest:
                     highest = i[DB.comics.local_path].find('\\')
@@ -1016,6 +1052,11 @@ class ViktorinoxTechClass:
                 sorted_list = [v for k, v in sorted_tmp.items()]
 
             return sorted_list
+
+        if rest and reverse:
+            fromlist += rest
+        elif rest:
+            fromlist = rest + fromlist
 
         return  fromlist
 
@@ -1359,6 +1400,7 @@ tech = ViktorinoxTechClass()
 
 class WorkerSignals(QObject):
     finished = pyqtSignal()
+    quit = pyqtSignal()
     error = pyqtSignal(dict)
     result = pyqtSignal(object)
     progress = pyqtSignal(dict)
@@ -1368,6 +1410,9 @@ class WorkerSignals(QObject):
     stop = pyqtSignal(dict)
     file_delivery = pyqtSignal(str)
     activated = pyqtSignal(bool)
+    neighbour = pyqtSignal(dict)
+    pagenumbers = pyqtSignal(tuple)
+    startjob = pyqtSignal(dict)
 
 class Worker(QRunnable):
     def __init__(self, function):

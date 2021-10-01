@@ -31,6 +31,16 @@ class DB:
         magazine = 3
         comic = 1
 
+    class volumes:
+        publisher_id = sqlite.db_sqlite('volumes', 'publisher_id', 'integer')
+        volume_id = sqlite.db_sqlite('volumes', 'volume_id', 'integer')
+        volume_name = sqlite.db_sqlite('volumes', 'volume_name')
+
+    class issue_volume_publisher:
+        comic_id = sqlite.db_sqlite('issue_volume_publisher', 'comic_id', 'integer')
+        volume_id = sqlite.db_sqlite('issue_volume_publisher', 'volume_id', 'integer')
+        publisher_id = sqlite.db_sqlite('issue_volume_publisher', 'publisher_id', 'integer')
+
     class settings:
         config =  sqlite.db_sqlite('settings', 'config', 'blob')
 

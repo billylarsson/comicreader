@@ -959,7 +959,7 @@ class FolderSettingsWidget(CheckableWidget):
         t.correct_broken_font_size(self.extend_button, x_margin=2, y_margin=0)
 
 
-    def manage_delete_button(self, create=False, delete=False, text='DELETE'):
+    def manage_delete_button(self, create=False, delete=False, text='DELETE', tooltip='DELETE THIS PATH FROM SETTINGS'):
         def reuse_or_destroy(self, create, delete):
             if 'delete_button' in dir(self) and create:
                 return True
@@ -1003,7 +1003,7 @@ class FolderSettingsWidget(CheckableWidget):
             t.pos(self.delete_button, coat=self.lineedit, left=self.lineedit, width=w)
             t.pos(self.lineedit, left=dict(right=self.delete_button), x_margin=linewidth)
             t.pos(self.lineedit, left=self.lineedit, right=le_right)
-            self.delete_button.setToolTip('DELETE THIS PATH FROM SETTINGS')
+            self.delete_button.setToolTip(tooltip)
 
         if reuse_or_destroy(self, create, delete):
             return
@@ -1450,7 +1450,15 @@ class UniversalSettingsArea(GOD):
 
         return settingscanvas
 
-    def make_this_into_folder_settings(self, headersdictionary, toolsheight=30, labelwidth=240, le_width=500, linewidth=1, extend_le_til=None):
+    def make_this_into_folder_settings(self,
+                                       headersdictionary,
+                                       toolsheight=30,
+                                       labelwidth=240,
+                                       le_width=500,
+                                       linewidth=1,
+                                       extend_le_til=None,
+                                       postcorrect_font=True
+                                       ):
         """
         this is esentially a fn:make_this_into_checkable_buttons but adds a lineedit and
         attaches is as label.lineedit and resizes the settingscanvas accordingly
@@ -1482,8 +1490,10 @@ class UniversalSettingsArea(GOD):
             settingscanvas.widgets.append(dictionary)
 
             t.pos(settingscanvas, width=label.lineedit.geometry().right(), add=margin)
-            #t.pos(label.lineedit, width=label.lineedit.width() - margin - linewidth)
             t.pos(label.lineedit, width=label.lineedit, add=-(margin+linewidth))
+
+            if postcorrect_font and 'textlabel' in dir(label):
+                t.correct_broken_font_size(label.textlabel)
 
             self.delayed_init(dictionary, force=True)
 

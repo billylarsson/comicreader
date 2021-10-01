@@ -369,7 +369,7 @@ def check_for_pdf_assistance(pdf_file, index=0, pagecount=False, dry_run=False, 
         loc = t.separate_file_from_folder(image_list[0])
         return loc.full_path
 
-def get_thumbnail_from_zip_or_database(zip_file=None, database=None, index=0, proxy=True, store=False, height=300):
+def get_thumbnail_from_zip_or_database(zip_file=None, database=None, index=0, proxy=True, store=-1, height=300):
     """
     if file already present as file or blob in the databse those are returned
     otherwise this extracts file from index in CBZ or PDF file and generate a
@@ -377,11 +377,13 @@ def get_thumbnail_from_zip_or_database(zip_file=None, database=None, index=0, pr
     :param zip_file: string
     :param database: db_tuple
     :param index: int
-    :param proxy: todo return premade image
     :param store: as a blob inside db_tuple
     :param height: thumbnail height
     :return: string full_path
     """
+    if store == -1:
+        store = t.config('cover_blob')
+
     if database and not zip_file:
         zip_file = database[DB.comics.local_path]
 
@@ -1065,7 +1067,7 @@ def concurrent_cbx_to_webp_convertion(cbxfile, signalgroup='_cbx_to_webp', comic
 
     def delete_spam(tmpfolder):
         if not t.config('delete_spam'):
-            return True
+            return False
 
         white_extensions = {'png', 'jpg', 'bmp', 'gif', 'jpeg', 'webp', 'xml', 'md5'}
         good_files = []

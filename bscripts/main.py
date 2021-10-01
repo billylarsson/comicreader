@@ -6,8 +6,8 @@ from bscripts.comic_drawing  import ComicWidget
 from bscripts.database_stuff import DB, sqlite
 from bscripts.file_handling  import scan_for_new_comics
 from bscripts.tricks         import tech as t
-from bscripts.widgets        import TOOLBatch, TOOLMaxiMini, TOOLQuit
-from bscripts.widgets        import TOOLRank, TOOLReading, TOOLSearch,TOOLComicvine
+from bscripts.widgets        import TOOLBatch, TOOLComicvine, TOOLMaxiMini
+from bscripts.widgets        import TOOLQuit, TOOLRank, TOOLReading, TOOLSearch
 from bscripts.widgets        import TOOLSettings, TOOLSort, TOOLWEBP
 import os
 import sys
@@ -28,7 +28,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         # TRIGGERS <
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.qgrip = QtWidgets.QSizeGrip(self, styleSheet='background-color:rgba(0,0,0,0)')
-        self.resize(1920, 1280)
+        self.resize(1920, 1600)
 
         if t.config('autoupdate_library'):
             t.start_thread(scan_for_new_comics, name='update_library', threads=1)
@@ -65,6 +65,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                 values[DB.comics.rating] = i[2]
                 values[DB.comics.publisher_id] = i[16]
                 values[DB.comics.issue_number] = i[10]
+                values[DB.comics.current_page] = i[3]
                 values[DB.comics.type] = 1
                 execute_many.append(tuple(values))
 
@@ -88,9 +89,46 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
         print("STARTING TIMER:", sleep, 'seconds')
         # self.le_primary_search.setText("adult collection")
-        #self.search_comics()
+        self.search_comics()
         #import_db()
-        t.start_thread(dum, finished_function=kill, name="dfucker")
+        #t.start_thread(dum, finished_function=kill, name="dfucker")
+
+    def shadehandler(self):
+        class SHADE(QtWidgets.QLabel):
+            def __init__(self, place, main):
+                super().__init__(place)
+                self.main = main
+                t.style(self, background='rgba(20,20,20,190)')
+                self.signal = t.signals('shade', reset=True)
+                self.signal.quit.connect(self.killswitch)
+                self.set_position()
+                self.show()
+
+            def set_position(self):
+                t.pos(self, inside=self.main.back)
+
+            def killswitch(self):
+                if t.config('shade_surroundings'):
+                    for count in range(len(self.main.pages_container)-1,-1,-1):
+                        self.main.pages_container[count].close()
+                        self.main.pages_container.pop(count)
+
+                    for count in range(len(self.main.widgets['info'])-1,-1,-1):
+                        self.main.widgets['info'][count].quit(signal=False)
+                        self.main.widgets['info'].pop(count)
+
+                self.close()
+                if 'shade' in dir(self.main):
+                    del self.main.shade
+
+            def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
+                self.killswitch()
+
+        if not t.config('shade_surroundings'):
+            return
+
+        if not 'shade' in dir(self):
+            self.shade = SHADE(self.back, main=self)
 
     def create_tool_buttons(self):
         """
@@ -145,6 +183,9 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
         if 'minmax' in dir(self):
             self.minmax.set_position()
+
+        if 'shade' in dir(self):
+            self.shade.set_position()
 
     def dummy(self, sleep=0):
         if sleep and type(sleep) == int:
@@ -303,8 +344,9 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
     def resize_scrollcanvas(self):
         wt,ht,nw,nh = self.get_wt_ht()
+        t.pos(self.scrollcanvas_main, width=self)
         if self.scrollcanvas_main.height() != nh:
-            self.scrollcanvas_main.setMinimumSize(self.scrollcanvas_main.width(), nh)
+            self.scrollcanvas_main.setMinimumHeight(nh)
 
     def cleanup_batch_status(self):
         def shrink_text_size(self):

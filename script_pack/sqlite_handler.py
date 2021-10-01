@@ -204,7 +204,7 @@ class SQLite:
         query = 'PRAGMA table_info("' + str(table,) + '")'
         tables = self.engine.execute(query)
         tables = [x for x in tables]
-        query_part1 = "insert into " + 'comics' + " values"
+        query_part1 = "insert into " + table + " values"
         query_part2 = "(" + ','.join(['?'] * len(tables)) + ")"
         values = [None] * len(tables)
 

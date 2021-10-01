@@ -76,12 +76,6 @@ class TOOLSearch(POPUPTool):
 
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         self.main.search_comics()
-        # if ev.button() == 1:
-        #     self.activation_toggle(save=False)
-        #     self.show_searchwidget()
-        #
-        # if ev.button() == 2:
-        #     self.main.search_comics()
 
     def show_searchwidget(self):
         """
@@ -237,15 +231,15 @@ class TOOLSettings(POPUPTool):
                 widget=FolderSettingsAndGLobalHighlight,
                 kwargs = dict(type='comic_folder')),
             dict(
-                text='NSFW FOLDER', textsize=TEXTSIZE,
-                tooltip='found a mouse ...',
-                widget=FolderSettingsAndGLobalHighlight,
-                kwargs = dict(type='NSFW_folder')),
-            dict(
                 text='MAGAZINES', textsize=TEXTSIZE,
                 widget=FolderSettingsAndGLobalHighlight,
                 tooltip='regular magazines folder ...',
                 kwargs = dict(type='magazine_folder')),
+            dict(
+                text='NSFW FOLDER', textsize=TEXTSIZE,
+                tooltip='found a mouse ...',
+                widget=FolderSettingsAndGLobalHighlight,
+                kwargs=dict(type='NSFW_folder')),
             dict(
                 text='CACHE FOLDER', textsize=TEXTSIZE,
                 widget=FolderSettingsAndGLobalHighlight,
@@ -273,6 +267,14 @@ class TOOLSettings(POPUPTool):
                 tooltip='if we cannot find a comicvine id with this file, a small square is positioned in the upper right corner indicating that',
                 kwargs = dict(type='show_untagged_flag')
             )
+        ]
+
+        full_shade = [
+            dict(
+                text='SHADE SURROUNDINGS', textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight, post_init=True,
+                tooltip='when you study or read an issue, all surroudings are darkley shaded, looks good.',
+                kwargs = dict(type='shade_surroundings')),
         ]
 
         dict_with_pdf_things = [
@@ -335,7 +337,7 @@ class TOOLSettings(POPUPTool):
         blackgray6 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_update_hash, canvaswidth=350)
         blackgray7 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_md5_comic)
         blackgray8 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_with_autoupdate)
-
+        blackgray9 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=full_shade)
 
         header = self.main.settings.make_header(title='SETTINGS')
 
@@ -347,6 +349,7 @@ class TOOLSettings(POPUPTool):
         t.pos(blackgray5_1, left=blackgray3, below=blackgray5, y_margin=10)
         t.pos(blackgray8, left=blackgray5, below=blackgray5_1, y_margin=10)
         t.pos(blackgray7, below=blackgray8, y_margin=10, left=blackgray8)
+        t.pos(blackgray9, below=blackgray4, y_margin=10)
 
         t.pos(header, right=blackgray3, bottom=blackgray6)
 
@@ -572,7 +575,7 @@ class TOOLSort(POPUPTool):
             dict(
                 text='SORT FILE NAME', textsize=TEXTSIZE, post_init=True,
                 widget=HighlightRadioBoxGroup,
-                kwargs = dict(
+                kwargs=dict(
                     signalgroup='sort_modes_group',
                     type='sort_by_name')
             ),
@@ -729,24 +732,22 @@ class TOOLRank(POPUPTool):
 class TOOLMaxiMini(POPUPTool):
     def __init__(self, place, main=None, type=None):
         super().__init__(place, main=main, type=type)
-        t.style(self, background='gray', color='black', font='14pt')
         self.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
         self.move(1,1)
         self.set_position()
         self.activation_toggle(save=False)
         self.how_much_is_the_fish()
+        t.set_my_pixmap(self)
 
     def how_much_is_the_fish(self):
         if not self.activated:
             self.main.showMaximized()
-            self.setText('LARGE')
         else:
             self.main.showNormal()
-            self.setText('SMALL')
 
     def set_position(self):
         x = self.main.back.geometry().top() - 2
-        t.pos(self, size=(120, x,), right=self.main.quitter.geometry().left(), x_margin=2)
+        t.pos(self, size=(60, x,), right=self.main.quitter.geometry().left(), x_margin=2)
 
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
         self.activation_toggle()
@@ -759,9 +760,8 @@ class TOOLMaxiMini(POPUPTool):
 class TOOLQuit(POPUPTool):
     def __init__(self, place, type=None):
         super().__init__(place, type=type)
-        t.style(self, background='gray', color='black', font='14pt')
         self.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
-        self.setText('QUIT')
+        t.set_my_pixmap(self)
         self.move(1,1)
         self.set_position()
 
