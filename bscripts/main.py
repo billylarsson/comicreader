@@ -36,76 +36,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         self.show()
 
         self.create_tool_buttons()
-        self.devmode(sleep=600)
 
-    def devmode(self, sleep):
-        if not 'devmode' in sys.argv:
-            return
-
-        def dum():
-            if sleep and type(sleep) == int:
-                for count in range(sleep, -1, -1):
-                    time.sleep(1)
-                    self.quitter.clear()
-                    self.quitter.setText(str(count))
-
-        def import_db():
-            import sqlite3
-            import copy
-            old_db = sqlite3.connect('/home/plutonergy/Documents/Comicreader/comicreader_database.sqlite')
-            old_cur = old_db.cursor()
-            old_cur.execute('select * from comics')
-            data = old_cur.fetchall()
-            query, org_values = sqlite.empty_insert_query('comics')
-            execute_many = []
-            for i in data:
-                if not i[7]:
-                    continue
-
-                values = copy.copy(org_values)
-                values[DB.comics.local_path] = i[13]
-                values[DB.comics.volume_id] = i[1]
-                values[DB.comics.comic_id] = i[7]
-                values[DB.comics.rating] = i[2]
-                values[DB.comics.publisher_id] = i[16]
-                values[DB.comics.issue_number] = i[10]
-                values[DB.comics.current_page] = i[3]
-                values[DB.comics.type] = 1
-                execute_many.append(tuple(values))
-
-            sqlite.execute(query, execute_many)
-
-
-
-
-
-        def kill():
-            if 'fuck_this_duck' in dir(self):
-                if self.fuck_this_duck == -1:
-                    return
-
-                del self.fuck_this_duck
-                t.start_thread(dum, finished_function=kill, name="dfucker")
-                print("RESTARTING KILL TIMER")
-            else:
-                print("KILLING AFTER:", sleep, 'seconds')
-                sys.exit()
-
-        print("STARTING TIMER:", sleep, 'seconds')
-
-        if 1 == 2:
-            sqlite.execute('drop table comics')
-            sqlite.execute('drop table volumes')
-            sqlite.execute('drop table issue_volume_publisher')
-            sys.exit()
-        elif 1 == 2:
-            import_db()
-
-        #self.le_primary_search.setText("Caligula 03 (of 06) (2011) (two covers) (Minutemen-DTs).cbz")
-        self.search_comics()
-
-
-        #t.start_thread(dum, finished_function=kill, name="dfucker")
 
     def shadehandler(self):
         class SHADE(QtWidgets.QLabel):
