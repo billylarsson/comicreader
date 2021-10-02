@@ -1057,6 +1057,48 @@ class ViktorinoxTechClass:
 
         return  fromlist
 
+    def keep_track(self,
+                   name='default',
+                   starting_lives=5,
+                   margin=0.2,
+                   restart=False,
+                   start=False, stop=False, halt=False,
+                   ):
+
+        if 'keep_track' not in self.techdict:
+            self.techdict['keep_track'] = {}
+
+        if name not in self.techdict['keep_track'] or restart:
+
+            class TRACKER:
+                def __init__(self, starting_lives, margin):
+                    self.lives_left = starting_lives
+                    self.margin = margin
+                def start(self):
+                    self.start_time = time.time()
+                def stop(self):
+                    self.time_taken = self.start_time - time.time()
+                    if self.time_taken > self.margin:
+                        self.lives_left -= 1
+                        if tech.config('dev_mode'):
+                            print("Lives left:", self.lives_left)
+                def halt(self):
+                    if self.lives_left < 0:
+                        return True
+
+            self.techdict['keep_track'][name] = TRACKER(starting_lives=starting_lives, margin=margin)
+
+        tracker = self.techdict['keep_track'][name]
+
+        if start:
+            tracker.start()
+        elif stop:
+            tracker.stop()
+        elif halt:
+            return tracker.halt()
+
+        return tracker
+
     def config(self, setting, theme=None, stylesheet=False, image=False, curious=False):
         """
         if theme=None the logic is to ask dictionary['default_theme'] for theme

@@ -1546,7 +1546,7 @@ class ComicWidget(GOD):
 
                     t.pos(i, height=i.cover, add=2)
 
-    def make_box_of_details(self, first=False, enhancefactor=1):
+    def make_box_of_details(self, first=False, enhancefactor=1, force=False):
 
         if t.config('squeeze_mode') and first:
             return
@@ -1557,19 +1557,19 @@ class ComicWidget(GOD):
         self.box_been_set = []
         start_from = self.cover
 
-        if t.config('show_ratings'):
+        if force or t.config('show_ratings'):
             self.show_rating(starting_coordinates=start_from, enhancefactor=enhancefactor)
             start_from = self.stars[-1]
 
-        if t.config('show_reading_progress'):
+        if force or t.config('show_reading_progress'):
             self.current_page_process(starting_coordinates=start_from, enhancefactor=enhancefactor)
             start_from = self.page_label
 
-        if t.config('show_page_and_size'):
+        if force or t.config('show_page_and_size'):
             self.make_size_and_page_label(starting_coordinates=start_from, enhancefactor=enhancefactor)
             start_from = self.size_pages_label
 
-        if t.config('show_untagged_flag'):
+        if force or t.config('show_untagged_flag'):
             self.make_untagged_disturbing_label()
 
         t.pos(self, height=start_from.geometry().bottom() + 1)

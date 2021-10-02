@@ -118,14 +118,13 @@ class INFOWidget(ComicWidget):
             global_signal = '_global_on_off_' + str(self.database[0])
             return global_signal
 
-
         def make_cover_and_cover_details(self):
             cover_height = t.config('cover_height') * 2
             cover = extract_from_zip_or_pdf(database=self.database)
             self.make_cover(cover_height=cover_height, coverfile=cover)
             self.cover.first_reize(cover_height=cover_height)
             t.pos(self.cover, move=[5, 5])
-            self.make_box_of_details(enhancefactor=3)
+            self.make_box_of_details(enhancefactor=3, force=True)
             t.pos(self.size_pages_label, move=[1, 0], width=self.size_pages_label, sub=-2)
 
         def make_type_changer(self):
@@ -1182,9 +1181,6 @@ class INFOWidget(ComicWidget):
         expand_now(self, expandlater)
         self.small_info_widgets = expandlater
 
-        # volumes_signal = t.signals('volumes_label' + str(self.database[0]), reset=True)
-        # volumes_signal.startjob.connect(self.init_volumes_label)
-
         t.start_thread(self.update_comicvine, name='comicvine', threads=1)
 
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
@@ -1271,7 +1267,7 @@ class INFOWidget(ComicWidget):
                     if i['center']:
                         return i['count']
 
-            def find_an_unupdated_local_comic_id(candidate):
+            def find_an_unupdated_local_comic_id(self, candidate):
                 local_check_query = 'select * from comics where comic_id = (?)'
                 data = sqlite.execute(local_check_query, candidate['database'][DB.comics.comic_id])
 
@@ -1292,7 +1288,7 @@ class INFOWidget(ComicWidget):
                 if candidate['count'] > center_count:
                     return False
 
-            find_an_unupdated_local_comic_id(candidate)
+            find_an_unupdated_local_comic_id(self, candidate)
 
             thumb = None
 
@@ -1353,7 +1349,7 @@ class INFOWidget(ComicWidget):
                 else:
                     comic_ids.append(data[count][DB.comics.comic_id])
 
-        def update_issuenumbrs(cvdata, localdata):
+        def update_issuenumbers(cvdata, localdata):
             """
             if somehow an issue is missing issuenumber we fix that while
             we're here if we cannot the issue will be popped from list
@@ -1386,36 +1382,33 @@ class INFOWidget(ComicWidget):
         volume_id = self.database[DB.comics.volume_id]
         publisher_id = self.database[DB.comics.publisher_id]
 
-        query = 'select * from comics where volume_id = (?)'
-        data = sqlite.execute(query=query, values=volume_id, all=True)
-        delete_duplicants(data)
+        cv_vols = comicvine(volume=volume_id, update=True)
 
-        if data:
+        if cv_vols and cv_vols['issues']:
+            query = 'select * from comics where volume_id = (?)'
+            data = sqlite.execute(query=query, values=volume_id, all=True)
+            delete_duplicants(data)
+            update_issuenumbers(cvdata=cv_vols, localdata=data)
 
-            cv_vols = comicvine(volume=volume_id, update=True)
-            update_issuenumbrs(cvdata=cv_vols, localdata=data)
+            _, org_values = sqlite.empty_insert_query('comics')
+            comic_ids = [x[DB.comics.comic_id] for x in data]
 
-            if data and cv_vols and cv_vols['issues']:
+            for i in cv_vols['issues']:
 
-                _, org_values = sqlite.empty_insert_query('comics')
-                comic_ids = [x[DB.comics.comic_id] for x in data]
+                if not i['issue_number']:
+                    continue
 
-                for i in cv_vols['issues']:
+                if i['id'] in comic_ids:
+                    continue
 
-                    if not i['issue_number']:
-                        continue
+                comic_ids.append(i['id'])
+                values = copy.copy(org_values)
 
-                    if i['id'] in comic_ids:
-                        continue
-
-                    comic_ids.append(i['id'])
-                    values = copy.copy(org_values)
-
-                    values[DB.comics.comic_id] = i['id']
-                    values[DB.comics.issue_number] = i['issue_number']
-                    values[DB.comics.publisher_id] = publisher_id
-                    values[DB.comics.volume_id] = volume_id
-                    data.append(tuple(values))
+                values[DB.comics.comic_id] = i['id']
+                values[DB.comics.issue_number] = i['issue_number']
+                values[DB.comics.publisher_id] = publisher_id
+                values[DB.comics.volume_id] = volume_id
+                data.append(tuple(values))
 
             sorted_volume = t.sort_by_number(data, DB.comics.issue_number)
 
@@ -1472,7 +1465,7 @@ class INFOWidget(ComicWidget):
                         self.proxy_label.setText('COMICVINE: ' + str(self.database[DB.comics.comic_id]))
                         self.proxy_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
-                    elif not self.center:
+                    else:
                         self.parent.re_init(self.database)
 
         neighbour = RelativeWidget(self.main.back, main=self.main, parent=self, type='_neighbour', **instructions)
@@ -1480,9 +1473,8 @@ class INFOWidget(ComicWidget):
         if instructions['center']:
             self.relatives.append(neighbour)
 
-            if not instructions['database'][0]:
-                signal = t.signals('_build_relatives_from_proxy_parent', delete_afterwards=True)
-                signal.finished.emit()
+            signal = t.signals('_build_relatives_from_proxy_parent', delete_afterwards=True)
+            signal.finished.emit()
 
         elif self.relatives[-1].count < instructions['count']:
             self.relatives.append(neighbour)
@@ -1518,83 +1510,136 @@ class INFOWidget(ComicWidget):
         candidates = job['candidates']
         maxrelatives = len([x for x in candidates if x['used']])
 
-        if len(candidates) <= maxrelatives:
+        if len(candidates) < 2: # ignore if just one
             return
 
-        class SmallVolume(GOD):
+        class SmallVolume(GLOBALDeactivate):
             def __init__(self, place, database, *args, **kwargs):
                 super().__init__(place=place, *args, **kwargs)
                 self.database = database
                 self.setText(database[DB.comics.issue_number])
                 self.setAlignment(QtCore.Qt.AlignHCenter|QtCore.Qt.AlignVCenter)
                 self.styleme()
-
-            def styleme(self):
                 t.correct_broken_font_size(self, y_margin=0, x_margin=2, minsize=10)
 
+
+            def styleme(self):
+
                 if self.database[0]:
-                    t.style(self, background='rgb(115,115,130)', color=UNREAD_C_1)
+                    normal_background = 'rgb(115,115,130)'
+                    normal_color = UNREAD_C_1
                     self.setToolTip('PRESENT')
                 else:
-                    t.style(self, background='rgb(100,100,100)', color='rgb(40,40,40)')
+                    normal_background = 'rgb(100,100,100)'
+                    normal_color = 'rgb(40,40,40)'
                     self.setToolTip('MISSING!')
 
                 for i in self.relatives:
                     if i.database[DB.comics.comic_id] == self.database[DB.comics.comic_id]:
                         if i.center:
-                            t.style(self, background=CURRENT_B_1, color='rgb(30,30,30)')
+                            normal_background = CURRENT_B_1
+                            normal_color = 'rgb(30,30,30)'
                             self.setToolTip('SELECTED')
                         elif self.database[0]:
-                            t.style(self, background=CURRENT_B_0, color='rgb(30,30,30)')
+                            normal_background = CURRENT_B_0
+                            normal_color = 'rgb(30,30,30)'
                             self.setToolTip('PRESENT (shown in left side gallery)')
                         else:
-                            t.style(self, background='rgb(0,40,50)', color='rgb(140,140,140)')
+                            normal_background = 'rgb(0,40,50)'
+                            normal_color = 'rgb(140,140,140)'
                             self.setToolTip('MISSING (proxy viewable in gallery)')
 
-            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-                if self.database[0]:
-                    self.parent.re_init(self.database)
+                t.style(self, background=normal_background, color=normal_color)
 
-                else:
-                    thumb = None
-                    rv = comicvine(issue=self.database[DB.comics.comic_id])
+                self.directives['activation'] = [
+                    dict(object=self, background='lightBlue', color='black'),
+                ]
+                self.directives['deactivation'] = [
+                    dict(object=self, background=normal_background, color=normal_color),
+                ]
 
-                    if rv:
-                        thumb = t.download_file(url=rv['image']['small_url'])
-                    if not thumb:
-                        thumb = t.config('download_error', image=True)
+            def styleall(self, ev=None):
+                """
+                if all five relatives-gallery are accounted for in the
+                current volumelabel there's no need for a redraw and
+                we use the current one and restyle them all instead
 
-                    if not thumb:
+                if ev.button() == 2, a redraw will be enforced
+                """
+                cvids = [x.database[DB.comics.comic_id] for x in self.relatives]
+
+                for cvid in cvids:
+                    for count, i in enumerate(self.parent.volumeslabel.volwidgets):
+
+                        if i.database[DB.comics.comic_id] == cvid and ev.button() != 2: # halts break to enforce redraw
+                            break
+
+                        elif count+1 == len(self.parent.volumeslabel.volwidgets): # redraw
+                            sorted_volume = self.parent.genereate_volume_sorted_by_issuenumbers()
+                            candidates = self.parent.generate_candidates_list(sorted_volume)
+                            job = dict(sorted_volume=sorted_volume, candidates=candidates, highjack=True)
+                            self.parent.close_and_pop_list('volumeslabel')
+                            self.parent.init_volumes_label(job=job, highjack=self.database[DB.comics.comic_id])
+                            return
+
+                for i in self.parent.volumeslabel.volwidgets: # no redraw
+                    i.styleme()
+
+            def generate_cloud_thumb(self):
+                """
+                download and create a thumbnail from comicvine
+                :return: string or None
+                """
+                thumb = None
+                rv = comicvine(issue=self.database[DB.comics.comic_id])
+
+                if rv:
+                    thumb = t.download_file(url=rv['image']['small_url'])
+                if not thumb:
+                    thumb = t.config('download_error', image=True)
+
+                return thumb
+
+            def order_jobs_for_relatives_and_volumelabel(self, ev=None, thumbnailpath=None):
+                if not thumbnailpath:
+                    thumbnailpath = self.generate_cloud_thumb()
+
+                    if not thumbnailpath:  # error has occured, cannot please user, no gui update
                         return
 
-                    self.parent.close_and_pop_list('relatives')
-                    self.parent.close_and_pop_list('volumeslabel')
+                self.parent.close_and_pop_list('relatives')
 
-                    sorted_volume = self.parent.genereate_volume_sorted_by_issuenumbers()
-                    candidates = self.parent.generate_candidates_list(sorted_volume)
+                sorted_volume = self.parent.genereate_volume_sorted_by_issuenumbers()
+                candidates = self.parent.generate_candidates_list(sorted_volume)
 
-                    for can in candidates:
-                        if can['database'][DB.comics.comic_id] == self.database[DB.comics.comic_id]:
-                            job = dict(sorted_volume=sorted_volume, candidates=candidates, highjack=True)
+                for can in candidates:
+                    if can['database'][DB.comics.comic_id] == self.database[DB.comics.comic_id]:
 
-                            can['center'] = True
-                            can['used'] = True
+                        can['center'] = True
+                        can['used'] = True
 
-                            signal = t.signals('_build_relatives_from_proxy_parent', reset=True)
+                        signal = t.signals('_build_relatives_from_proxy_parent', reset=True)
 
-                            signal.finished.connect(partial(
-                                self.parent.pick_relatives, candidates))
+                        signal.finished.connect(partial(self.parent.pick_relatives, candidates))
+                        signal.finished.connect(partial(self.styleall, ev))
 
-                            signal.finished.connect(partial(
-                                self.parent.init_volumes_label, job, highjack=self.database[DB.comics.comic_id]))
+                        self.parent.signal.buildrelative.emit(dict(
+                                                                    database=can['database'],
+                                                                    image_path=thumbnailpath,
+                                                                    count=can['count'],
+                                                                    center=True,
+                        ))
+                        return True
 
-                            self.parent.signal.buildrelative.emit(dict(
-                                database=can['database'],
-                                image_path=thumb,
-                                center=True,
-                                count=can['count']))
+            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                if self.database[0]: # local do
+                    thumb = get_thumbnail_from_zip_or_database(database=self.database, proxy=False)
+                    if thumb:
+                        self.order_jobs_for_relatives_and_volumelabel(ev, thumbnailpath=thumb)
 
-                            break
+                else: # proxy do
+                    self.order_jobs_for_relatives_and_volumelabel(ev)
+
 
         class VolumeLabel(GOD):
             def __init__(self, *args, **kwargs):
@@ -1604,14 +1649,14 @@ class INFOWidget(ComicWidget):
                 self.setLineWidth(2)
                 self.volumes = []
                 self.volwidgets = []
-                t.style(self, background='transparent', color=UNREAD_C_0)
+                t.style(self, background=TXT_DARKTRANS, color=UNREAD_C_0)
 
             def position_volumes(self):
                 rowlimit = 20
                 eachsize = int(self.parent.width() / rowlimit)
 
                 for i in self.volumes:
-                    vol = SmallVolume(self, database=i['database'], type='_smallvol', extravar=dict(
+                    vol = SmallVolume(self, database=i['database'], type='_smallvol' + str(i), extravar=dict(
                         relatives=self.parent.relatives,
                         parent=self.parent,
                     ))
@@ -1676,7 +1721,7 @@ class INFOWidget(ComicWidget):
 
             if not highjack and dictionary['database'][DB.comics.comic_id] != self.database[DB.comics.comic_id]:
                 continue
-                
+
             dictionary['center'] = True
             dictionary['used'] = True
             self.volumeslabel.add_volume(dictionary=dictionary)
@@ -1703,6 +1748,9 @@ class INFOWidget(ComicWidget):
         if open page from the same database
         shade not closed (signal not emitted)
         """
+
+        self.signal = t.signals('infowidget_signal_' + str(self.database[0]), reset=True)
+
         self.close_and_pop_list('relatives')
         self.close_and_pop_list('volumeslabel')
 

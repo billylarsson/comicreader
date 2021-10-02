@@ -18,6 +18,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         super(LSComicreaderMain, self).__init__()
         uic.loadUi('./gui/main_v4.ui', self)
         self.setWindowTitle('Comicreader Longsnabel v0.0.1')
+        sqlite.dev_mode = t.config('dev_mode')
         t.style(self, name='main')
         self.widgets = dict(main=[], info=[])
         self.pages_container = []
@@ -58,6 +59,9 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             query, org_values = sqlite.empty_insert_query('comics')
             execute_many = []
             for i in data:
+                if not i[7]:
+                    continue
+
                 values = copy.copy(org_values)
                 values[DB.comics.local_path] = i[13]
                 values[DB.comics.volume_id] = i[1]
@@ -88,9 +92,19 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                 sys.exit()
 
         print("STARTING TIMER:", sleep, 'seconds')
-        # self.le_primary_search.setText("adult collection")
+
+        if 1 == 2:
+            sqlite.execute('drop table comics')
+            sqlite.execute('drop table volumes')
+            sqlite.execute('drop table issue_volume_publisher')
+            sys.exit()
+        elif 1 == 2:
+            import_db()
+
+        #self.le_primary_search.setText("Caligula 03 (of 06) (2011) (two covers) (Minutemen-DTs).cbz")
         self.search_comics()
-        #import_db()
+
+
         #t.start_thread(dum, finished_function=kill, name="dfucker")
 
     def shadehandler(self):
@@ -546,18 +560,19 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
                 t.start_thread(self.dummy, finished_function=self.fill_row, finished_arguments=(floodlimit - 1))
 
-    def mouseMoveEvent(self, event):
-        if event.button() == 2 or 'old_position' not in dir(self):
+    def mouseMoveEvent(self, ev):
+        if ev.button() == 2 or 'old_position' not in dir(self):
+            self.old_position = ev.globalPos()
             return
 
-        delta = QPoint(event.globalPos() - self.old_position)
+        delta = QPoint(ev.globalPos() - self.old_position)
         self.move(self.x() + delta.x(), self.y() + delta.y())
-        self.old_position = event.globalPos()
+        self.old_position = ev.globalPos()
 
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         if ev.button() == 1:
             self.old_position = ev.globalPos()
 
-    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
-        self.old_position = event.globalPos()
+    # def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
+    #     self.old_position = ev.globalPos()
 

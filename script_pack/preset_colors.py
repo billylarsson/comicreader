@@ -12,7 +12,7 @@ TXT_DARKTRANS = 'rgba(30,30,30,245)'
 
 DARKRED = 'rgb(115, 10, 10)'
 
-JOB_SUCCESS = 'yellow'
+JOB_SUCCESS = 'green'
 JOB_STOPPED = 'orange'
 JOB_ERROR = 'red'
 

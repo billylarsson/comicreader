@@ -26,6 +26,7 @@ class SQLite:
         self.INI_FULL_PATH     = os.path.abspath(os.path.expanduser(self.INI_DIR + self.INI_FILE))
         # ------------------------------------ #
         self.techdict = {}
+        self.dev_mode = False
         # ------------------------------------ #
         self.engine = None
         # ------------------------------------ #
@@ -194,7 +195,8 @@ class SQLite:
                 with self.engine.connect() as connection:
                     if values:
                         result = connection.execute(query, values)
-                        print("SQLITE event:", query, values)
+                        if self.dev_mode:
+                            print("SQLITE write event:", query, values)
                     else:
                         result = connection.execute(query)
 

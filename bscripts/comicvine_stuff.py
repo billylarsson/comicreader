@@ -6,6 +6,7 @@ import os
 import requests
 import time
 
+
 class CVConnect:
     def __init__(self):
         self.reset()
@@ -121,8 +122,10 @@ class CVConnect:
             retry_count = 5
             while retry_count > 0:
                 retry_count -= 1
-                try:
+
+                if t.config('dev_mode'):
                     print("DOWNLOADING FROM COMICVINE!", self.filename, self.url)
+                try:
                     self.response = requests.get(self.url, headers=t.header())
 
                     if self.response.status_code == 200:
@@ -131,17 +134,44 @@ class CVConnect:
 
                         break # will always break if resone == 200
                     else:
-                        print("SUPER IMPORTANT", self.response.status_code)
+                        if t.config('dev_mode'):
+                            print("SUPER IMPORTANT", self.response.status_code)
                         break
 
                 except ConnectionError:
                     time.sleep(1)
         else:
-            print("USING COMICVINE CACHE:", self.filename)
+            if t.config('dev_mode'):
+                print("USING COMICVINE CACHE:", self.filename)
 
         rv = self.load_results()
         if rv:
             return rv
+
+def extra_update():
+    tracker = t.keep_track('_extra_update', start=True)
+    if tracker.halt():
+        return
+
+    query = 'select * from issue_volume_publisher'
+    finedata = sqlite.execute(query=query, all=True)
+
+    fouldata = sqlite.execute(query='select * from comics', all=True)
+    fouldata = [x for x in fouldata if x[DB.comics.comic_id] and not x[DB.comics.volume_id]]
+
+    for missing in fouldata:
+        for existing in finedata:
+            if existing[DB.issue_volume_publisher.comic_id] == missing[DB.comics.comic_id]:
+                query = 'update comics set volume_id = (?) where id is (?)'
+                values = existing[DB.issue_volume_publisher.volume_id], missing[0]
+                sqlite.execute(query=query, values=values)
+
+                if not missing[DB.comics.publisher_id]:
+                    query = 'update comics set publisher_id = (?) where id is (?)'
+                    values = existing[DB.issue_volume_publisher.publisher_id], missing[0]
+                    sqlite.execute(query=query, values=values)
+
+    tracker.stop()
 
 def issue_vol_pub(volume_id, cvjson):
     publisher_id = cvjson['publisher']['id']
@@ -296,12 +326,13 @@ def comicvine(
         rv, cv = download_volumedata(volume_id=volume_id)
 
         if update:
-            if cv.new_download:
-                issue_vol_pub(volume_id=volume_id, cvjson=rv)
+            issue_vol_pub(volume_id=volume_id, cvjson=rv)
 
             data = sqlite.execute('select * from volumes where volume_id = (?)', volume_id)
             if not data:
                 update_publisher_volumes(issue_data_or_publisher_id=rv['publisher']['id'])
+
+            extra_update()
 
         return rv
 
