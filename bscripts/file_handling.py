@@ -28,6 +28,28 @@ def extract_from_zip_or_pdf(file=None, database=None, index=0):
 
     return rv
 
+
+def add_winrar_7zip_to_path(configstring):
+    if platform.system() == 'Windows':
+        app_path = t.config(configstring, curious=True)
+
+        if type(app_path) == list:
+            app_path = app_path[0]
+
+        if type(app_path) != str:
+            return False
+
+        if os.environ["PATH"].find(app_path) == -1:
+            if len(app_path) > 0 and os.path.exists(app_path):
+
+                if platform.system() == 'Windows':
+                    os.environ["PATH"] += ';' + app_path
+                else:
+                    os.environ["PATH"] += ':' + app_path
+            return True
+        else:
+            return t.config(configstring)
+
 def unzipper(zip_file=None, database=None, index=0, filename=None):
     """
     if filename:
@@ -63,27 +85,6 @@ def unzipper(zip_file=None, database=None, index=0, filename=None):
             return good_files[index], good_files, bad_files, all_files
         else:
             return False, good_files, bad_files, all_files
-
-    def add_winrar_7zip_to_path(configstring):
-        if platform.system() == 'Windows':
-            app_path = t.config(configstring, curious=True)
-
-            if type(app_path) == list:
-                app_path = app_path[0]
-
-            if type(app_path) != str:
-                return False
-
-            if os.environ["PATH"].find(app_path) == -1:
-                if len(app_path) > 0 and os.path.exists(app_path):
-
-                    if platform.system() == 'Windows':
-                        os.environ["PATH"] += ';' + app_path
-                    else:
-                        os.environ["PATH"] += ':' + app_path
-                return True
-            else:
-                return t.config(configstring)
 
     files_in_the_zip = 1000
     file_to_extract = None
@@ -1050,6 +1051,9 @@ def concurrent_cbx_to_webp_convertion(cbxfile, signalgroup='_cbx_to_webp', comic
             zf.extractall(tmpfolder)
 
         except BadZipFile:
+            if platform.system() == 'Windows':
+                add_winrar_7zip_to_path('winrar_support')  # loads winrar to enviorment path
+                add_winrar_7zip_to_path('zip7_support')  # loads 7zip to enviorment path
 
             try:
                 rf = rarfile.RarFile(cbxfile)

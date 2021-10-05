@@ -119,6 +119,7 @@ class CVConnect:
             self.generate_filename()
 
         if force or not self.check_cache():
+            t.keep_track('comicvine_requests', starting_lives=400, report=True, count=1)
             retry_count = 5
             while retry_count > 0:
                 retry_count -= 1
@@ -210,6 +211,21 @@ def download_all_volumes_from_publisher(publisher_id):
     rv = cv.download()
     return rv
 
+def update_publisher_name(cvdata):
+    if not cvdata:
+        return
+
+    publisher_name = cvdata['name']
+    publisher_id = cvdata['id']
+
+    data = sqlite.execute('select * from publishers where publisher_id = (?)', (publisher_id,))
+
+    if not data:
+        query, values = sqlite.empty_insert_query('publishers')
+        values[DB.publishers.publisher_id] = publisher_id
+        values[DB.publishers.publisher_name] = publisher_name
+        sqlite.execute(query=query, values=values)
+
 def update_publisher_volumes(issue_data_or_publisher_id):
     if type(issue_data_or_publisher_id) != int:
         rv, _ = download_volumedata(volume_id=issue_data_or_publisher_id['volume']['id'])
@@ -226,6 +242,8 @@ def update_publisher_volumes(issue_data_or_publisher_id):
 
     if not rv:
         return publisher_id
+
+    update_publisher_name(cvdata=rv)
 
     org_volumes = sqlite.execute('select * from volumes where publisher_id = (?)', (publisher_id,), all=True)
     org_volumes = [x[DB.volumes.volume_id] for x in org_volumes]
@@ -316,7 +334,7 @@ def comicvine(
 
     elif volume:
         if type(volume) != int:
-            volume_id = volume[DB.comics.comic_id]
+            volume_id = volume[DB.comics.volume_id]
         else:
             volume_id = volume
 
@@ -325,7 +343,7 @@ def comicvine(
 
         rv, cv = download_volumedata(volume_id=volume_id)
 
-        if update:
+        if update and rv:
             issue_vol_pub(volume_id=volume_id, cvjson=rv)
 
             data = sqlite.execute('select * from volumes where volume_id = (?)', volume_id)
@@ -336,23 +354,13 @@ def comicvine(
 
         return rv
 
+    elif publisher:
 
-"""
-        if 'fields' in kwargs:
-            for eachfield in kwargs['fields']:
-                if self.cv_dict['fields'] == "":
-                    self.cv_dict['fields'] = '&fields=' + str(eachfield)
-                else:
-                    self.cv_dict['fields'] += ',' + str(eachfield)
+        if type(publisher) != int:
+            if len(publisher) == len([x for x in dir(DB.volumes) if x[0] != '_']) + 1:
+                publisher = publisher[DB.volumes.publisher_id]
+            else:
+                publisher = publisher[DB.comics.publisher_id]
 
-        if 'filter' in kwargs:
-            for eachform in kwargs['filter']:
-                for eachkey in kwargs['filter'][eachform]:
-                    if self.cv_dict['filter'] == "":
-                        self.cv_dict['filter'] = '&filter=' + str(eachform) + ':' + str(eachkey)
-                    else:
-                        self.cv_dict['filter'] += ',' + str(eachform) + ':' + str(eachkey)
-
- https://comicvine.gamespot.com/api/issues?api_key=XXX&filter=id:856444&sort=id:desc&format=json
- 
-"""
+            update_publisher_volumes(issue_data_or_publisher_id=publisher)
+            extra_update()

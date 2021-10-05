@@ -8,7 +8,8 @@ from bscripts.file_handling  import scan_for_new_comics
 from bscripts.tricks         import tech as t
 from bscripts.widgets        import TOOLBatch, TOOLComicvine, TOOLMaxiMini
 from bscripts.widgets        import TOOLQuit, TOOLRank, TOOLReading, TOOLSearch
-from bscripts.widgets        import TOOLSettings, TOOLSort, TOOLWEBP
+from bscripts.widgets        import TOOLSort, TOOLWEBP,TOOLPublisher
+from bscripts.settings_area import TOOLSettings
 import os
 import sys
 import time
@@ -83,6 +84,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             dict(config='tool_searcher', widget=TOOLSearch, widthmultiplyer=1),
             dict(config='tool_settings', widget=TOOLSettings, widthmultiplyer=1),
             dict(config='tool_sorter', widget=TOOLSort, widthmultiplyer=1),
+            dict(config='tool_publisher', widget=TOOLPublisher, widthmultiplyer=1.3),
             dict(config='tool_reader', widget=TOOLReading, widthmultiplyer=1),
             dict(config='tool_webp', widget=TOOLWEBP, widthmultiplyer=1),
             dict(config='tool_ranking', widget=TOOLRank, widthmultiplyer=1),
@@ -105,10 +107,11 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
             else:
                 prelabel = dlist[count - 1]['label']
+                startlabel = dlist[0]['label']
                 if count == 1:
                     t.pos(label, coat=prelabel, after=self.le_primary_search, x_margin=1)
                 else:
-                    t.pos(label, coat=prelabel, after=prelabel, x_margin=1)
+                    t.pos(label, size=startlabel, after=prelabel, x_margin=1)
                     t.pos(label, width=label.width() * d['widthmultiplyer'])
 
             t.set_my_pixmap(label)
@@ -207,12 +210,16 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             self.batcher.stop_drawing(reset=True)
             self.draw_from_comiclist()
 
-    def search_comics(self):
+    def search_comics(self, highjack=None):
         """
         makes a dictionary with jobs that are passed along to draw engine
+        :param highjack list of comics
         """
-        self.save_search_query()
-        results = self.filter_all_comics()
+        if not highjack:
+            self.save_search_query()
+            results = self.filter_all_comics()
+        else:
+            results = highjack
 
         if results:
             self.le_primary_search.clearFocus()
@@ -232,9 +239,10 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         :param all: closes and pops everything inside self.widgets
         """
         def close_and_pop(self, key):
-            for count in range(len(self.widgets[key]) -1, -1, -1):
-                self.widgets[key][count].close()
-                self.widgets[key].pop(count)
+            t.close_and_pop(self.widgets[key])
+            # for count in range(len(self.widgets[key]) -1, -1, -1):
+            #     self.widgets[key][count].close()
+            #     self.widgets[key].pop(count)
 
         for key in self.widgets:
             if all or key == widgets:
@@ -504,6 +512,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         if ev.button() == 1:
             self.old_position = ev.globalPos()
 
-    # def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
-    #     self.old_position = ev.globalPos()
+    def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
+        if 'old_position' in dir(self):
+            del self.old_position
 

@@ -63,6 +63,7 @@ default_dict = dict(
         tool_settings=dict(active=True, value=['./img/config.webp']),
         tool_sorter=dict(active=True, value=['./img/sort.webp']),
         tool_reader=dict(active=True, value=['./img/mode.webp']),
+        tool_publisher=dict(active=True, value=['./img/publishers.webp']),
         tool_ranking=dict(active=True, value=['./img/rank.webp']),
         tool_webp=dict(active=True, value=['./img/webp.webp']),
         tool_batch=dict(active=True, value=['./img/batch.webp']),
@@ -618,25 +619,27 @@ class ViktorinoxTechClass:
 
         loc = tech.separate_file_from_folder(file)
 
-        retrycount = -1
-        while retrycount < 5:
-            retrycount +=1
+        if os.path.exists(loc.full_path):
+            return loc.full_path
 
-            if os.path.exists(loc.full_path):
-                return loc.full_path
+        elif not os.path.exists(loc.folder):
+            pathlib.Path(loc.folder).mkdir(parents=True)
 
-            elif not os.path.exists(loc.folder):
-                pathlib.Path(loc.folder).mkdir(parents=True)
+        if header:
+            headers = tech.header(**header)
+        else:
+            headers = tech.header()
 
-            if header:
-                url = Request(url, headers=tech.header(**header))
-            else:
-                url = Request(url, headers=tech.header())
+        spamfriendly = 5
+        while not os.path.exists(loc.full_path) and spamfriendly:
+            spamfriendly -= 1
+
+            url = Request(url, headers=headers)
 
             try: webpage = urlopen(url).read()
             except: return False
 
-            with open(loc.full_path, "wb") as new_file:
+            with open(loc.full_path, 'wb') as new_file:
                 new_file.write(webpage)
 
             if os.path.exists(loc.full_path):
@@ -676,7 +679,7 @@ class ViktorinoxTechClass:
     @staticmethod
     def md5_hash_string(string=None, random=False, upper=False):
         if random or not string and not random:
-            salt = 'how_much_is_the_fish?'
+            salt = 'how_much_is_the_fi2H'
             string = str(uuid.uuid4()) + str(time.time()) + salt + (string or "")
 
         hash_object = hashlib.md5(string.encode())
@@ -920,9 +923,18 @@ class ViktorinoxTechClass:
             return complete_dir
 
     @staticmethod
-    def correct_broken_font_size(object, presize=True, maxsize=14, minsize=5, x_margin=10, y_margin=0):
+    def correct_broken_font_size(object, presize=True, maxsize=14, minsize=5, x_margin=10, y_margin=0, shorten=False):
         if presize:
             tech.style(object, font=str(maxsize) + 'pt')
+
+        if shorten:
+            for count in range(100):
+                object.show()
+                if object.fontMetrics().boundingRect(object.text()).width() + x_margin > object.width():
+                    text = object.text()
+                    object.setText(text[0:-3] + '..')
+                else:
+                    return
 
         for count in range(maxsize,minsize,-1):
             object.show()
@@ -1062,6 +1074,8 @@ class ViktorinoxTechClass:
                    starting_lives=5,
                    margin=0.2,
                    restart=False,
+                   count=False,
+                   report=False,
                    start=False, stop=False, halt=False,
                    ):
 
@@ -1073,7 +1087,15 @@ class ViktorinoxTechClass:
             class TRACKER:
                 def __init__(self, starting_lives, margin):
                     self.lives_left = starting_lives
+                    self.counter = 0
                     self.margin = margin
+                def count(self, report=False):
+                    self.counter += 1
+                    if tech.config('dev_mode'):
+                        if self.counter >= self.lives_left:
+                            print(f'The {self.lives_left} limit reached, current count: {self.counter}')
+                        elif report:
+                            print(f'Current count {self.counter} (limit: {self.lives_left})')
                 def start(self):
                     self.start_time = time.time()
                 def stop(self):
@@ -1082,6 +1104,11 @@ class ViktorinoxTechClass:
                         self.lives_left -= 1
                         if tech.config('dev_mode'):
                             print("Lives left:", self.lives_left)
+                def runtime(self):
+                    active = time.time() - self.start_time
+                    if active < 0 or active > 36000:
+                        return 0.01
+                    return active
                 def halt(self):
                     if self.lives_left < 0:
                         return True
@@ -1092,6 +1119,8 @@ class ViktorinoxTechClass:
 
         if start:
             tracker.start()
+        elif count:
+            tracker.count(report=report)
         elif stop:
             tracker.stop()
         elif halt:
@@ -1230,6 +1259,12 @@ class ViktorinoxTechClass:
             sqlite.execute('update settings set config = null where id is 1')
         else:
             sqlite.execute('update settings set config = (?) where id is 1', values=data)
+
+    @staticmethod
+    def close_and_pop(thislist):
+        for count in range(len(thislist) - 1, -1, -1):
+            thislist[count].close()
+            thislist.pop(count)
 
     @staticmethod
     def set_my_pixmap(widget, name=None, path=None):
@@ -1460,6 +1495,12 @@ class WorkerSignals(QObject):
     volumelabel = pyqtSignal(dict)
     buildrelative = pyqtSignal(dict)
     pickrelatives = pyqtSignal(list)
+    drawpublisher = pyqtSignal(int)
+    drawvolume = pyqtSignal(dict)
+    sort_publishers_by_name = pyqtSignal()
+    sort_publishers_by_amount = pyqtSignal()
+    sort_volumes_by_name = pyqtSignal()
+    sort_volumes_by_amount = pyqtSignal()
 
 class Worker(QRunnable):
     def __init__(self, function):

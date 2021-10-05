@@ -1499,4 +1499,55 @@ class UniversalSettingsArea(GOD):
 
         return settingscanvas
 
+class POPUPTool(GLOBALDeactivate):
+    def __init__(self, place, *args, **kwargs):
+        super().__init__(place=place, *args, **kwargs)
 
+        self.directives['activation'] = [
+            dict(object=self, background='rgba(200,50,50,150)'),
+        ]
+
+        self.directives['deactivation'] = [
+            dict(object=self, background=TXT_DARKTRANS),
+        ]
+
+        self.activation_toggle(force=False, save=False)
+        self.setAcceptDrops(True)
+        self.setMouseTracking(True)
+
+    def dragEnterEvent(self, ev):
+        if ev.mimeData().hasUrls() and len(ev.mimeData().urls()) == 1:
+            file = ev.mimeData().urls()[0]
+            file = file.path()
+            if os.path.isfile(file):
+                splitter = file.split('.')
+                if splitter[-1].lower() in {'webp', 'jpg', 'jpeg', 'png', 'gif'}:
+                    ev.accept()
+        return
+
+
+    def dropEvent(self, ev):
+        if ev.mimeData().hasUrls() and ev.mimeData().urls()[0].isLocalFile():
+            from bscripts.file_handling import generate_cover_from_image_file
+
+            if len(ev.mimeData().urls()) == 1:
+                ev.accept()
+
+                files = []
+
+                for i in ev.mimeData().urls():
+                    t.tmp_file('pixmap_' + self.type, hash=True, extension='webp', delete=True)
+                    t.tmp_file(i.path(),              hash=True, extension='webp', delete=True)
+
+                    tmp_nail = generate_cover_from_image_file(
+                        i.path(), store=False, height=self.height(), width=self.width())
+
+                    files.append(tmp_nail)
+
+                for c in range(len(files)-1,-1,-1):
+                    with open(files[c], 'rb') as f:
+                        files[c] = f.read()
+
+                if files:
+                    t.save_config(self.type, files, image=True)
+                    t.set_my_pixmap(self)
