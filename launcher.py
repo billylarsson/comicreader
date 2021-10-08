@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-PROGRAM = 'LSComicreader'
+PROGRAM = 'Python Comicreader'
 
 import os
 import platform

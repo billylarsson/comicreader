@@ -18,7 +18,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
     def __init__(self, primary_screen):
         super(LSComicreaderMain, self).__init__()
         uic.loadUi('./gui/main_v4.ui', self)
-        self.setWindowTitle('Comicreader Longsnabel v0.0.1')
+        self.setWindowTitle('Python Comicreader v2.0.1 alpha')
         sqlite.dev_mode = t.config('dev_mode')
         t.style(self, name='main')
         self.widgets = dict(main=[], info=[])
