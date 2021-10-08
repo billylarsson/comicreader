@@ -38,5 +38,5 @@ from PyQt5 import QtWidgets
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
-    window = LSComicreaderMain()
+    window = LSComicreaderMain(primary_screen=app.primaryScreen())
     app.exec_()

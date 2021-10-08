@@ -12,9 +12,10 @@ from bscripts.widgets        import TOOLPublisher, TOOLQuit, TOOLRank
 from bscripts.widgets        import TOOLReading, TOOLSearch, TOOLSort, TOOLWEBP,TOOLFolders
 import os
 import time
+import platform
 
 class LSComicreaderMain(QtWidgets.QMainWindow):
-    def __init__(self):
+    def __init__(self, primary_screen):
         super(LSComicreaderMain, self).__init__()
         uic.loadUi('./gui/main_v4.ui', self)
         self.setWindowTitle('Comicreader Longsnabel v0.0.1')
@@ -27,16 +28,21 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         self.draw_more_from_comiclist = QShortcut(QKeySequence(Qt.Key_Space), self)
         self.draw_more_from_comiclist.activated.connect(self.draw_from_comiclist_spacebar)
         # TRIGGERS <
-        self.setWindowFlags(Qt.FramelessWindowHint)
-        self.qgrip = QtWidgets.QSizeGrip(self, styleSheet='background-color:rgba(0,0,0,0)')
-        self.resize(1920, 1600)
+
+        if platform.system() != 'Windows' or t.config('dev_mode'):
+            self.setWindowFlags(Qt.FramelessWindowHint)
+            self.qgrip = QtWidgets.QSizeGrip(self, styleSheet='background-color:rgba(0,0,0,0)')
 
         if t.config('autoupdate_library'):
             t.start_thread(scan_for_new_comics, name='update_library', threads=1)
-        self.show()
 
+        self.show()
         self.create_tool_buttons()
 
+        screen_width = primary_screen.size().width()
+        screen_height = primary_screen.size().height()
+        self.setGeometry(
+            int(screen_width * 0.1), int(screen_width * 0.05), int(screen_width * 0.75), int(screen_height * 0.75))
 
     def shadehandler(self):
         class SHADE(QtWidgets.QLabel):
@@ -87,7 +93,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             dict(config='tool_publisher', widget=TOOLPublisher, text='BROWSE+', tooltip='browse only publishers/volumes/issues that are paired with comicvine'),
             dict(config='tool_reader', widget=TOOLReading, text='READ MODE'),
             dict(config='tool_webp', widget=TOOLWEBP, text='WEBP'),
-            dict(config='tool_ranking', widget=TOOLRank, text='QUICK KEYS'),
+            dict(config='tool_ranking', widget=TOOLRank, text='QUICK SHORTCUTS'),
             dict(config='tool_comicvine', widget=TOOLComicvine, text='COMICVINE'),
             dict(config='tool_batch', widget=TOOLBatch, text='BATCH'),
         ]
@@ -122,15 +128,19 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                     t.pos(label, after=prelabel, x_margin=1)
 
 
-        self.quitter = TOOLQuit(self, type='quit_button')
-        size_to_text(self.quitter, 'QUIT')
-        t.pos(self.quitter, right=self, move=[-1,-1])
-        self.minmax = TOOLMaxiMini(self, main=self, type='minimaxi')
-        size_to_text(self.minmax, '< -oo- >')
-        t.pos(self.minmax, right=dict(left=self.quitter), x_margin=1, move=[-1,-1])
+
+
+        if platform.system() != 'Windows' or t.config('dev_mode'):
+            self.quitter = TOOLQuit(self, type='quit_button')
+            size_to_text(self.quitter, 'QUIT')
+            t.pos(self.quitter, right=self, move=[-1, -1])
+
+            self.minmax = TOOLMaxiMini(self, main=self, type='minimaxi')
+            size_to_text(self.minmax, '< -oo- >')
+            t.pos(self.minmax, right=dict(left=self.quitter), x_margin=1, move=[-1,-1])
+
         signal = t.signals('global_on_off_signal')
         signal.deactivate.emit('_')
-
 
     def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
         # this is the grip that resizes the window
@@ -251,9 +261,6 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         """
         def close_and_pop(self, key):
             t.close_and_pop(self.widgets[key])
-            # for count in range(len(self.widgets[key]) -1, -1, -1):
-            #     self.widgets[key][count].close()
-            #     self.widgets[key].pop(count)
 
         for key in self.widgets:
             if all or key == widgets:
@@ -332,7 +339,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             if failed:
                 print("HEY!, you forgot faild:", failed)
                 for i in [x for x in self.draw_list_comics if x['usable'] == False and not x['used']]:
-                    print(i)
+                    pass
 
         drawn = len([x for x in self.draw_list_comics if x['used']])
         faild = len([x for x in self.draw_list_comics if x['usable'] == False and not x['used']])
@@ -350,12 +357,13 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         cleanupstep that shows the pixmap for all
         comics that are'nt yet showing a cover, show counter
         """
-        for i in self.widgets['main']:
-            t.start_thread(self.dummy, finished_function=[
-                i.cover.set_pixmap, i.make_box_of_details, self.resize_scrollcanvas
-            ])
+        for count, i in enumerate(self.widgets['main']):
+            finished_functions = [i.cover.set_pixmap, i.make_box_of_details, self.resize_scrollcanvas]
 
-        self.cleanup_batch_status()
+            if count+1 == len(self.widgets['main']):
+                finished_functions.append(self.cleanup_batch_status)
+
+            t.start_thread(self.dummy, finished_function=finished_functions)
 
     def check_if_usable_is_legal(self, db_dictionary):
         """
@@ -452,7 +460,9 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                 continue
 
             self.fill_row_with_this_comic(i['database'], floodlimit=floodlimit)
-            break
+            return
+
+        self.draw_comics_cleanup()
 
     def check_if_all_are_positioned(self):
         """
@@ -507,7 +517,6 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                 return True
 
             else: # thread goes on
-
                 t.start_thread(self.dummy, finished_function=self.fill_row, finished_arguments=(floodlimit - 1))
 
     def mouseMoveEvent(self, ev):
@@ -524,7 +533,6 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             self.old_position = ev.globalPos()
 
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
-        pass
-        # if 'old_position' in dir(self):
-        #     del self.old_position
+        if 'old_position' in dir(self):
+            del self.old_position
 

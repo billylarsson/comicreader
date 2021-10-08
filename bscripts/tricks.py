@@ -531,6 +531,7 @@ class ViktorinoxTechClass:
             return local_path
 
         local_path = os.path.abspath(os.path.expanduser(local_path))
+
         class LOCATIONS:
             full_path = local_path
             subfolder = None
@@ -543,13 +544,7 @@ class ViktorinoxTechClass:
 
             _tmp = local_path.split(sep)
 
-            if os.path.isdir(full_path) and os.path.exists(full_path):
-                folder = full_path
-                subfolder = _tmp[-1]
-                if len(_tmp) > 1:
-                    parent = sep.join(_tmp[0:-1])
-
-            else: # propose an existing or non-existing file
+            if os.path.isfile(full_path) or not os.path.exists(full_path):
                 filename = _tmp[-1]
                 _tmp.pop(-1)
                 if _tmp:
@@ -566,6 +561,11 @@ class ViktorinoxTechClass:
                     ext = ""
                     naked_filename = filename
 
+            else:
+                folder = full_path
+                subfolder = _tmp[-1]
+                if len(_tmp) > 1:
+                    parent = sep.join(_tmp[0:-1])
 
 
         return LOCATIONS

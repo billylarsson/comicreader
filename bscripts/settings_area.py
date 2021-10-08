@@ -207,7 +207,7 @@ class TOOLSettings(POPUPTool):
                 text='DEVELOPER FEATURES', textsize=TEXTSIZE,
                 shrink_to_text=True,
                 widget=DEVMODE, post_init=True,
-                tooltip='source code explains',
+                tooltip='source code explains (experience can be buggy, keep this of for improved stability)',
                 kwargs = dict(type='dev_mode')),
         ]
 

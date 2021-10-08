@@ -440,7 +440,8 @@ class BrowseFolder(CVIDFileBrowse):
 
         for count, walk in enumerate(os.walk(self.data['path'])):
             current_dir = walk[0]
-            folders = [current_dir + '/' + x for x in walk[1]]
+            loc = t.separate_file_from_folder(current_dir)
+            folders = [current_dir + loc.sep + x for x in walk[1]]
             folders.sort()
 
             t.close_and_pop(self.parent.files)
@@ -457,7 +458,7 @@ class BrowseFolder(CVIDFileBrowse):
                     if f[-1].lower() in white_extensions:
                         whitefiles.append(file)
 
-            files = {current_dir + '/' + x: None for x in sorted(whitefiles)}
+            files = {current_dir + loc.sep + x: None for x in sorted(whitefiles)}
             comics = sqlite.execute('select * from comics', all=True)
 
             for db in comics:
@@ -524,6 +525,7 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.parent = parent
+        self.publishers = {}
         self.scrollarea = self
         self.backplate = self.BackPlate(place=self, parent=self, main=main)
         self.pubs = self.backplate.pubs
@@ -846,6 +848,14 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
         def fetch_data():
             query = 'select * from comics where publisher_id is not null and comic_id is not null and volume_id is not null'
             data = sqlite.execute(query, all=True)
+            if not data:
+                # fetches one random comic with an comic_id just to show that things are working
+                tmp_query = 'select * from comics where comic_id is not null'
+                tmp_data = sqlite.execute(tmp_query, one=True)
+                if tmp_data:
+                    comicvine(issue=tmp_data, update=True)
+                    data = sqlite.execute(query, all=True)
+
             data.sort(key=lambda x: x[DB.comics.volume_id])
             data.sort(key=lambda x: x[DB.comics.publisher_id])
             return data
@@ -1035,6 +1045,9 @@ class TOOLFolders(POPUPTool):
         self.browser_widget.base_folders = []
         for dictionary in cycle:
             folders = t.config(dictionary['conf'])
+            if not folders:
+                continue
+
             for i in folders:
                 if os.path.exists(i):
                     self.browser_widget.base_folders.append(i)
@@ -1043,7 +1056,6 @@ class TOOLFolders(POPUPTool):
 
         for folder in self.browser_widget.base_folders:
             self.browser_widget.signal.drawfolder.emit(dict(path=folder, root=True))
-
 
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         self.activation_toggle(save=False)

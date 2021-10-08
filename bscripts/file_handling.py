@@ -541,7 +541,7 @@ class FileArchiveManager:
         for i in filedictionary['bad_files']:
             loc = t.separate_file_from_folder(i)
 
-            if loc.filename.lower() == 'comicinfo.xml':
+            if 'filename' in dir(loc) and loc.filename.lower() == 'comicinfo.xml':
                 xmlfile_location = unzipper(path, filename=i)
 
                 if not xmlfile_location:
@@ -1057,13 +1057,28 @@ def concurrent_cbx_to_webp_convertion(cbxfile, signalgroup='_cbx_to_webp', comic
                 rf = rarfile.RarFile(cbxfile)
                 rf.extractall(tmpfolder)
 
-            except rarfile.BadRarFile:
-                signal.error.emit(progressdict)
-                return False
+            except:
+                if t.config('zip7_support'):
+                    zip7 = t.config('zip7_support')
+                    zip7 = t.separate_file_from_folder(zip7[0] + '\\' + '7z.exe')
 
-            except: # winrar probably not installed?
-                signal.error.emit(progressdict)
-                return False
+                    if not os.path.exists(zip7.full_path):
+                        return False
+                else:
+                    return False
+
+                substring = f'"{zip7.full_path}" x -y "{cbxfile}" -o"{tmpfolder}"'
+                tmp_bat = t.tmp_file(new=True, extension='bat')
+
+                with open(tmp_bat, 'w') as batfile:
+                    batfile.write(substring)
+
+                try:
+                    theproc = subprocess.Popen(tmp_bat)
+                    theproc.communicate()
+                except:
+                    signal.error.emit(progressdict)
+                    return False
 
         return True
 
