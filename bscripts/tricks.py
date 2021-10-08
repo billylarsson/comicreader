@@ -1,11 +1,11 @@
-from PIL                    import Image
-from PyQt5                  import QtCore, QtWidgets
-from PyQt5.Qt               import QObject, QRunnable, QThreadPool
-from PyQt5.QtCore           import pyqtSignal, pyqtSlot
-from PyQt5.QtGui            import QPixmap
-from functools              import partial
+from PIL                     import Image
+from PyQt5                   import QtCore, QtWidgets
+from PyQt5.Qt                import QObject, QRunnable, QThreadPool
+from PyQt5.QtCore            import pyqtSignal, pyqtSlot
+from PyQt5.QtGui             import QPixmap
 from bscripts.database_stuff import DB, sqlite
-from urllib.request         import Request, urlopen
+from functools               import partial
+from urllib.request          import Request, urlopen
 import hashlib
 import os
 import pathlib
@@ -533,26 +533,40 @@ class ViktorinoxTechClass:
         local_path = os.path.abspath(os.path.expanduser(local_path))
         class LOCATIONS:
             full_path = local_path
+            subfolder = None
+            parent = None
+
             if platform.system() != "Windows":
                 sep = '/'
-                _tmp = local_path.split('/')
-                filename = _tmp[-1]
-                _tmp.pop(-1)
-                folder = '/'.join(_tmp)
             else:
                 sep = '\\'
-                _tmp = local_path.split('\\')
+
+            _tmp = local_path.split(sep)
+
+            if os.path.isdir(full_path) and os.path.exists(full_path):
+                folder = full_path
+                subfolder = _tmp[-1]
+                if len(_tmp) > 1:
+                    parent = sep.join(_tmp[0:-1])
+
+            else: # propose an existing or non-existing file
                 filename = _tmp[-1]
                 _tmp.pop(-1)
-                folder = '\\'.join(_tmp)
+                if _tmp:
+                    subfolder = _tmp[-1]
 
-            _tmp = full_path.split('.')
-            if len(_tmp) > 1:
-                ext = _tmp[-1]
-            else:
-                ext = ""
+                folder = sep.join(_tmp)
 
-            naked_filename = filename[0:-len(ext)-1]
+                _tmp = filename.split('.')
+
+                if len(_tmp) > 1:
+                    ext = _tmp[-1]
+                    naked_filename = filename[0:-len(ext)-1]
+                else:
+                    ext = ""
+                    naked_filename = filename
+
+
 
         return LOCATIONS
 
@@ -1499,8 +1513,12 @@ class WorkerSignals(QObject):
     drawvolume = pyqtSignal(dict)
     sort_publishers_by_name = pyqtSignal()
     sort_publishers_by_amount = pyqtSignal()
+    sort_publishers_by_rating = pyqtSignal()
     sort_volumes_by_name = pyqtSignal()
     sort_volumes_by_amount = pyqtSignal()
+    sort_volumes_by_rating = pyqtSignal()
+    drawfolder = pyqtSignal(dict)
+    drawfile = pyqtSignal(dict)
 
 class Worker(QRunnable):
     def __init__(self, function):

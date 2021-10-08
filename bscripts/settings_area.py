@@ -1,28 +1,14 @@
-from bscripts.database_stuff import sqlite
-import platform
-from PyQt5                        import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore                 import QPoint
-from bscripts.file_handling       import generate_cover_from_image_file
+from PyQt5                        import QtGui
+from bscripts.database_stuff      import sqlite
 from bscripts.file_handling       import hash_all_unhashed_comics
 from bscripts.file_handling       import scan_for_new_comics
 from bscripts.tricks              import tech as t
 from script_pack.settings_widgets import CheckBoxSignalGroup
 from script_pack.settings_widgets import CheckableAndGlobalHighlight
-from script_pack.settings_widgets import CheckableLCD, ExecutableLookCheckable
+from script_pack.settings_widgets import ExecutableLookCheckable
 from script_pack.settings_widgets import FolderSettingsAndGLobalHighlight
-from script_pack.settings_widgets import GLOBALDeactivate
-from script_pack.settings_widgets import HighlightRadioBoxGroup
+from script_pack.settings_widgets import GLOBALDeactivate, POPUPTool
 from script_pack.settings_widgets import UniversalSettingsArea
-from script_pack.preset_colors import *
-import os
-import sys
-from PyQt5                        import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore                 import QPoint, Qt
-from PyQt5.QtGui                  import QColor, QKeySequence, QPen, QPixmap
-from bscripts.database_stuff import DB, sqlite
-from bscripts.comicvine_stuff import comicvine
-from script_pack.settings_widgets import GOD
-from script_pack.settings_widgets import POPUPTool
 
 TEXTSIZE = 14
 

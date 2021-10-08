@@ -1,29 +1,17 @@
-from bscripts.database_stuff import sqlite
-import time
-import platform
+import os
 from PyQt5                        import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore                 import QPoint
-from bscripts.file_handling       import generate_cover_from_image_file
-from bscripts.file_handling       import hash_all_unhashed_comics
-from bscripts.file_handling       import scan_for_new_comics
+from PyQt5.QtGui                  import QColor, QPen
+from bscripts.comicvine_stuff     import comicvine
+from bscripts.database_stuff      import DB, sqlite
 from bscripts.tricks              import tech as t
-from script_pack.settings_widgets import CheckBoxSignalGroup
-from script_pack.settings_widgets import CheckableAndGlobalHighlight
-from script_pack.settings_widgets import POPUPTool
+from script_pack.preset_colors    import *
 from script_pack.settings_widgets import CheckableLCD, ExecutableLookCheckable
 from script_pack.settings_widgets import FolderSettingsAndGLobalHighlight
-from script_pack.settings_widgets import GLOBALDeactivate
-from script_pack.settings_widgets import HighlightRadioBoxGroup
+from script_pack.settings_widgets import GLOBALDeactivate, GOD
+from script_pack.settings_widgets import HighlightRadioBoxGroup, POPUPTool
 from script_pack.settings_widgets import UniversalSettingsArea
-from script_pack.preset_colors import *
-import os
 import sys
-from PyQt5                        import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore                 import QPoint, Qt
-from PyQt5.QtGui                  import QColor, QKeySequence, QPen, QPixmap
-from bscripts.database_stuff import DB, sqlite
-from bscripts.comicvine_stuff import comicvine
-from script_pack.settings_widgets import GOD
 
 TEXTSIZE = 14
 
@@ -204,13 +192,13 @@ class TOOLBatch(POPUPTool):
                 self.batch_settings.hide()
 
 class TITLE(QtWidgets.QLabel):
-    def __init__(self, place, child, title, killsignal):
+    def __init__(self, place, child, title, killsignal, width):
         super().__init__(place)
         self.child = child
         self.killsignal_name = killsignal
         self.sort_label = GOD(place)
         self.child.sort_label = self.sort_label
-        t.pos(self, size=[300,30], move=[30,30])
+        t.pos(self, size=[width,30], move=[30,30])
         self.draw_rectangles()
         self.label = QtWidgets.QLabel(self)
         t.style(self.label, background='transparent', color=TXT_SHINE)
@@ -232,7 +220,7 @@ class TITLE(QtWidgets.QLabel):
                 if ev.button() == 1:
                     if publishers:
                         self.enslave_me_signal.deactivate.emit(self.type)
-                        self.show_publishers(sort_by_name=True, refresh=False)
+                        self.signal.sort_publishers_by_name.emit()
 
                     elif volumes:
                         self.enslave_me_signal.deactivate.emit(self.type)
@@ -243,14 +231,22 @@ class TITLE(QtWidgets.QLabel):
                 if ev.button() == 1:
                     if publishers:
                         self.enslave_me_signal.deactivate.emit(self.type)
-                        self.show_publishers(sort_by_amount=True, refresh=False)
+                        self.signal.sort_publishers_by_amount.emit()
 
                     elif volumes:
                         self.enslave_me_signal.deactivate.emit(self.type)
                         self.show_volumes(sort_by_amount=True, refresh=False)
 
         class SortRating(SortRadio):
-            pass
+            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                if ev.button() == 1:
+                    if publishers:
+                        self.enslave_me_signal.deactivate.emit(self.type)
+                        self.signal.sort_publishers_by_rating.emit()
+
+                    elif volumes:
+                        self.enslave_me_signal.deactivate.emit(self.type)
+                        self.show_volumes(sort_by_rating=True, refresh=False)
 
         self.sort_labels = []
         cycle = [
@@ -260,12 +256,14 @@ class TITLE(QtWidgets.QLabel):
         ]
 
         for dictionary in cycle:
+
             type = dictionary['type']
             widget = dictionary['widget']
             tooltip = dictionary['tooltip']
 
             label = widget(self.sort_label, type=type + self.label.text(), signalgroup='_pubsort' + self.label.text())
             label.setToolTip(tooltip)
+            label.signal = self.child.signal
 
             label.show_publishers = self.child.show_publishers
             label.show_volumes = self.child.show_volumes
@@ -358,6 +356,29 @@ class CVIDFileBrowse(GLOBALDeactivate):
         self.default_event_colors()
         self.signal_global_gui_change('deactivation')
         t.correct_broken_font_size(self, shorten=True, presize=True, maxsize=self.textsize)
+        self.tooltip_generator()
+
+    def tooltip_generator(self):
+        tooltip = ""
+        if 'volume_percentage' in self.data and self.data['volume_percentage']:
+            tooltip += f"Carries {round(self.data['volume_percentage'] * 100, 2)}% of all paired volumes"
+            tooltip += f" ({self.data['volumes_count']} of {self.data['total_volume_count']})"
+
+            if 'average_rating' in self.data and self.data['average_rating']:
+                rating = round(self.data['average_rating'], 2)
+                tooltip += f"\nAverage rating among all rated volumes from this publisher: {rating}"
+
+        elif 'issue_count' in self.data and self.data['issue_count']:
+            perc = self.data['issue_count'] / self.data['total_issues']
+            perc = round(perc, 2)
+            tooltip += f"Carries {self.data['issue_count']} issues, {perc}% of "
+            tooltip += f"this publishers {self.data['total_issues']} paired issues."
+
+            if 'average_rating' in self.data and self.data['average_rating']:
+                rating = round(self.data['average_rating'], 2)
+                tooltip += f"\nAverage rating among all rated issues from this volume: {rating}"
+
+        self.setToolTip(tooltip)
 
     def default_event_colors(self):
         self.directives['activation'] = [
@@ -369,11 +390,97 @@ class CVIDFileBrowse(GLOBALDeactivate):
         ]
 
 class BrowseFile(CVIDFileBrowse):
-    pass
+    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+        self.main.search_comics(highjack=[self.data['database']])
+
+    def default_event_colors(self):
+        loc = t.separate_file_from_folder(self.data['database'][DB.comics.local_path])
+
+        if self.data['database'][DB.comics.comic_id]:
+            BACK_ON = 'rgb(20,20,60)'
+            BACK_OFF = 'rgb(10,10,50)'
+        else:
+            BACK_ON = 'rgb(20,20,20)'
+            BACK_OFF = 'rgb(10,10,10)'
+
+        if loc.ext.lower() == 'cbr':
+            COL_ON = 'orange'
+            COL_OFF = 'rgb(165, 85, 0)'
+        else:
+            COL_ON = 'orange'
+            COL_OFF = 'rgb(255, 85, 0)'
+
+        self.directives['activation'] = [
+            dict(object=self, color=COL_ON, background=BACK_ON),
+        ]
+        self.directives['deactivation'] = [
+            dict(object=self, color=COL_OFF, background=BACK_OFF),
+        ]
+
+class BrowseFolder(CVIDFileBrowse):
+    def draw_files(self, filedict):
+        for path, database in filedict.items():
+            if not database:
+                continue
+
+            self.signal.drawfile.emit(dict(path=path, database=database))
+
+    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+        if 'dummy' in self.data:
+            rv = t.separate_file_from_folder(self.data['path'])
+            if rv.parent:
+                if rv.parent in self.base_folders or rv.folder in self.base_folders:
+                    t.close_and_pop(self.parent.files)
+                    for i in self.base_folders:
+                        self.signal.drawfolder.emit(dict(path=i))
+
+                    return
+                else:
+                    self.data['path'] = rv.parent
+
+        for count, walk in enumerate(os.walk(self.data['path'])):
+            current_dir = walk[0]
+            folders = [current_dir + '/' + x for x in walk[1]]
+            folders.sort()
+
+            t.close_and_pop(self.parent.files)
+            self.parent.draw_dummy(dict(path=current_dir, dummy=True))
+
+            for i in folders:
+                self.signal.drawfolder.emit(dict(path=i))
+
+            white_extensions = {'pdf', 'cbz', 'cbr'}
+            whitefiles = []
+            for file in walk[2]:
+                f = file.split('.')
+                if len(f) > 1:
+                    if f[-1].lower() in white_extensions:
+                        whitefiles.append(file)
+
+            files = {current_dir + '/' + x: None for x in sorted(whitefiles)}
+            comics = sqlite.execute('select * from comics', all=True)
+
+            for db in comics:
+                for path,v in files.items():
+
+                    if v:
+                        continue
+
+                    if db[DB.comics.local_path] == path:
+                        files[path] = db
+                        if not [v for k,v in files.items() if not v]:
+                            self.draw_files(files)
+                            return
+                        break
+
+            self.draw_files(files)
+            return
+
 
 class BrowseVolume(CVIDFileBrowse):
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-        self.main.search_comics(highjack=self.data['issues'])
+        results = t.uni_sort(self.data['issues'])
+        self.main.search_comics(highjack=results)
 
 class BrowsePublisher(CVIDFileBrowse):
     def create_volume_widget(self):
@@ -389,25 +496,15 @@ class BrowsePublisher(CVIDFileBrowse):
         self.volume_widget.title.position_child_at_bottom()
 
         if t.config('p_sort_name' + title):
-            t.start_thread(
-                self.volume_widget.show_volumes,
-                name='comicvine',
-                threads=1,
-                worker_arguments=(True,),
-            )
+            wa = (True,)
         elif t.config('p_sort_count' + title):
-            t.start_thread(
-                self.volume_widget.show_volumes,
-                name='comicvine',
-                threads=1,
-                worker_arguments=(False,True,),
-            ) # todo fix start_thread
+            wa = (False,True,)
+        elif t.config('p_sort_rating' + title):
+            wa = (False, False, True,)
         else:
-            t.start_thread(
-                self.volume_widget.show_volumes,
-                name='comicvine',
-                threads=1,
-            )
+            wa = (False, False, False,)
+
+        t.start_thread(self.volume_widget.show_volumes, name='comicvine', threads=1, worker_arguments=wa)
 
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         self.activation_toggle(save=False)
@@ -422,7 +519,7 @@ class BrowsePublisher(CVIDFileBrowse):
             signal.finished.emit()
 
 class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
-    def __init__(self, place, main, parent, title, killsignal='kill_publisher_widget'):
+    def __init__(self, place, main, parent, title, killsignal='kill_publisher_widget', width=300):
         super().__init__(place)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
@@ -431,8 +528,9 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
         self.backplate = self.BackPlate(place=self, parent=self, main=main)
         self.pubs = self.backplate.pubs
         self.vols = self.backplate.vols
+        self.files = self.backplate.files
         self.setWidget(self.backplate)
-        self.title = TITLE(main.back, child=self, title=title, killsignal=killsignal)
+        self.title = TITLE(main.back, child=self, title=title, killsignal=killsignal, width=width)
         t.pos(self, width=self.title, below=self.title, y_margin=5)
 
         self.killsignal = t.signals(killsignal)
@@ -440,12 +538,19 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
         self.killsignal.finished.connect(self.killswitch)
 
         self.signal = t.signals('PVI_show_this' + title, reset=True)
+
         self.signal.drawpublisher.connect(self.backplate.draw_publisher)
         self.signal.drawvolume.connect(self.backplate.draw_volume)
+        self.signal.drawfolder.connect(self.backplate.draw_folder)
+        self.signal.drawfile.connect(self.backplate.draw_file)
+
         self.signal.sort_publishers_by_name.connect(self.reorganize_publishers_by_name)
         self.signal.sort_publishers_by_amount.connect(self.reorganize_publishers_by_amount)
+        self.signal.sort_publishers_by_rating.connect(self.reorganize_publishers_by_rating)
+
         self.signal.sort_volumes_by_name.connect(self.reorganize_volumes_by_name)
         self.signal.sort_volumes_by_amount.connect(self.reorganize_volumes_by_amount)
+        self.signal.sort_volumes_by_rating.connect(self.reorganize_volumes_by_rating)
 
         self.show()
 
@@ -470,10 +575,11 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
             self.main = main
             self.pubs = []
             self.vols = []
+            self.files = []
 
         def standard_positioning(self, object, container):
             if not container:
-                t.pos(object, size=[300,30])
+                t.pos(object, size=[self.parent.title.width(),30])
                 backup = object.text()
                 object.setText('RANDOM TEXT THIS LONG')
                 object.textsize = t.correct_broken_font_size(object)
@@ -481,7 +587,6 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
             else:
                 t.pos(object, coat=container[-1], below=container[-1], y_margin=1)
                 object.textsize = container[-1].textsize
-
 
             prebottom = object.geometry().bottom()
             t.pos(self, inside=self.scrollarea, height=prebottom)
@@ -493,24 +598,49 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
             object.post_init()
             container.append(object)
 
+        def draw_dummy(self, data):
+            widget = BrowseFolder(
+                self, type='_dummy..', main=self.main, data=data, text='..')
+
+            widget.signal = self.parent.signal
+            widget.base_folders = self.parent.base_folders
+            self.standard_positioning(widget, container=self.files)
+
+        def draw_file(self, data):
+            loc = t.separate_file_from_folder(data['path'])
+            widget = BrowseFile(
+                self, type='_folder' + data['path'], main=self.main, data=data, text=loc.filename)
+
+            widget.signal = self.parent.signal
+            self.standard_positioning(widget, container=self.files)
+
+        def draw_folder(self, data):
+            loc = t.separate_file_from_folder(data['path'])
+            if loc.subfolder:
+                widget = BrowseFolder(
+                    self, type='_folder' + data['path'], main=self.main, data=data, text=loc.subfolder)
+
+                widget.signal = self.parent.signal
+                self.standard_positioning(widget, container=self.files)
 
         def draw_volume(self, data):
             volume_id = data['volume_id']
             volume_name = data['volume_name']
 
-            p = BrowseVolume(self, type='_vol' + str(volume_id), data=data, main=self.main, text=volume_name)
+            widget = BrowseVolume(
+                self, type='_vol' + str(volume_id), data=data, main=self.main, text=volume_name)
 
-            self.standard_positioning(p, self.vols)
+            self.standard_positioning(widget, container=self.vols)
 
         def draw_publisher(self, publisher_id):
             pub = self.parent.publishers[publisher_id]
-            p = BrowsePublisher(
+            widget = BrowsePublisher(
                 self, type='_pub' + str(publisher_id), data=pub, main=self.main, text=pub['publisher_name'])
 
-            self.standard_positioning(p, self.pubs)
+            self.standard_positioning(widget, container=self.pubs)
 
 
-    def show_volumes(self, sort_by_name=False, sort_by_amount=False, refresh=True):
+    def show_volumes(self, sort_by_name=False, sort_by_amount=False, sort_by_rating=False, refresh=True):
         def delete_previous(self):
             if refresh:
                 t.close_and_pop(self.vols)
@@ -527,11 +657,55 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
             for i in tmp:
                 self.signal.drawvolume.emit(i[1])
 
-        if not refresh:
-            if sort_by_name:
+        def volumes_quick_by_rating(self, emit_later, inject_rating_only=False):
+            rt = []
+            for i in emit_later:
+                ratings = [x[DB.comics.rating] for x in i['issues'] if x[DB.comics.rating]]
+
+                if not ratings:
+                    average_rating = 0
+                else:
+                    average_rating = sum(ratings) / len(ratings)
+
+                rt.append((average_rating, i,))
+                if inject_rating_only:
+                    i['average_rating'] = average_rating
+
+            if inject_rating_only:
+                return
+
+            rt.sort(key=lambda x:x[0], reverse=True)
+            for i in rt:
+                self.signal.drawvolume.emit(i[1])
+
+        def generate_percentage_data(self, emit_later):
+            volumes_quick_by_rating(self, emit_later, inject_rating_only=True)
+            tmp = [(len(x['issues']), x,) for x in emit_later]
+            total = sum([x[0] for x in tmp])
+            for i in emit_later:
+                i['percentage'] = len(i['issues']) / total
+                i['issue_count'] = len(i['issues'])
+                i['total_issues'] = total
+
+        def post_drawn_volumes_sorting(self, emit_later):
+            if emit_later:  # dev_mode
+                generate_percentage_data(self, emit_later)
+                if sort_by_name:
+                    volumes_quick_by_name(self, emit_later)
+                elif sort_by_amount:
+                    volumes_quick_by_amount(self, emit_later)
+                elif sort_by_rating:
+                    volumes_quick_by_rating(self, emit_later)
+
+            elif sort_by_name:
                 self.signal.sort_volumes_by_name.emit()
             elif sort_by_amount:
                 self.signal.sort_volumes_by_amount.emit()
+            elif sort_by_rating:
+                self.signal.sort_volumes_by_rating.emit()
+
+        if not refresh:
+            post_drawn_volumes_sorting(self, False)
             return
 
         delete_previous(self)
@@ -556,22 +730,14 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
 
             # will redraw later down the line, quicker experience but can appear frozen therefore its a dev thingey
             if t.config('dev_mode'):
-                if sort_by_name or sort_by_amount:
+                if sort_by_name or sort_by_amount or sort_by_rating:
                     emit_later.append(d)
                     continue
 
             self.signal.drawvolume.emit(d)
 
-        if emit_later: # dev_mode
-            if sort_by_name:
-                volumes_quick_by_name(self, emit_later)
-            elif sort_by_amount:
-                volumes_quick_by_amount(self, emit_later)
+        post_drawn_volumes_sorting(self, emit_later)
 
-        elif sort_by_name:
-            self.reorganize_volumes_by_name()
-        elif sort_by_amount:
-            self.reorganize_volumes_by_amount()
 
     def sort_and_stack_under_each_others(self, tmplist, sorted=False):
         """
@@ -591,41 +757,77 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
                 t.pos(i[1], below=tmplist[count-1][1], y_margin=1)
 
     def reorganize_volumes_by_name(self):
-        freezestop = t.keep_track(name='reorgvols', restart=True)
-        while len(self.vols) != len(self.data['volumes']) and freezestop.runtime < 5:
-            pass
-
+        self.wait_for_job_to_finish(vols=True)
         tmp = [(x.data['volume_name'], x,) for x in self.vols]
         self.sort_and_stack_under_each_others(tmplist=tmp)
 
     def reorganize_volumes_by_amount(self):
-        freezestop = t.keep_track(name='reorgvols', restart=True)
-        while len(self.vols) != len(self.data['volumes']) and freezestop.runtime < 5:
-            pass
-
+        self.wait_for_job_to_finish(vols=True)
         tmp = [(len(x.data['issues']), x,) for x in self.vols]
         tmp.sort(key=lambda x:x[0], reverse=True)
         self.sort_and_stack_under_each_others(tmplist=tmp, sorted=True)
 
-    def reorganize_publishers_by_name(self):
-        freezestop = t.keep_track(name='reorgpubs', restart=True)
-        while len(self.pubs) != len(self.publishers) and freezestop.runtime < 5:
-            pass
+    def reorganize_volumes_by_rating(self):
+        self.wait_for_job_to_finish(vols=True)
 
+        rt = []
+        for i in self.vols:
+            ratings = [x[DB.comics.rating] for x in i.data['issues'] if x[DB.comics.rating]]
+
+            if not ratings:
+                average_rating = 0
+            else:
+                average_rating = sum(ratings) / len(ratings)
+
+            rt.append((average_rating, i,))
+
+        rt.sort(key=lambda x: x[0], reverse=True)
+        self.sort_and_stack_under_each_others(tmplist=rt, sorted=True)
+
+    def wait_for_job_to_finish(self, pubs=False, vols=False):
+        if pubs:
+            freezestop = t.keep_track(name='reorgpubs', restart=True)
+            while len(self.pubs) != len(self.publishers) and freezestop.runtime < 5:
+                pass
+        elif vols:
+            freezestop = t.keep_track(name='reorgvols', restart=True)
+            while len(self.vols) != len(self.data['volumes']) and freezestop.runtime < 5:
+                pass
+
+    def reorganize_publishers_by_name(self):
+        self.wait_for_job_to_finish(pubs=True)
         tmp = [(x.data['publisher_name'], x,) for x in self.pubs]
         self.sort_and_stack_under_each_others(tmplist=tmp)
 
     def reorganize_publishers_by_amount(self):
-        freezestop = t.keep_track(name='reorgpubs', restart=True)
-        while len(self.pubs) != len(self.publishers) and freezestop.runtime < 5:
-            pass
-
+        self.wait_for_job_to_finish(pubs=True)
         tmp = [(len(x.data['volumes']), x,) for x in self.pubs]
         tmp.sort(key=lambda x: x[0], reverse=True)
         self.sort_and_stack_under_each_others(tmplist=tmp, sorted=True)
 
+    def reorganize_publishers_by_rating(self):
+        self.wait_for_job_to_finish(pubs=True)
 
-    def show_publishers(self, sort_by_name=False, sort_by_amount=False, refresh=True):
+        rd = {}
+        rl = []
+        for publisher in self.pubs:
+            rd.update({publisher: []})
+            for volume_id in publisher.data['sorted_volumes']:
+                rd[publisher] += [x for x in publisher.data['sorted_volumes'][volume_id] if x[DB.comics.rating]]
+
+        for publisher, lst in rd.items():
+            if not lst:
+                average_rating = 0
+            else:
+                average_rating = [x[DB.comics.rating] for x in lst]
+                average_rating = sum(average_rating) / len(lst)
+
+            rl.append((average_rating, publisher,))
+
+        rl.sort(key=lambda x: x[0], reverse=True)
+        self.sort_and_stack_under_each_others(tmplist=rl, sorted=True)
+
+    def show_publishers(self, sort_by_name=False, sort_by_amount=False, sort_by_rating=False, refresh=True):
         """
         this is usually a thread of its own, drawing publisher one
         and one but can be highjacked when pressing sorting buttons
@@ -690,29 +892,68 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
             for i in tmp:
                 self.signal.drawpublisher.emit(i[1])
 
-        def check_sort_by_name_post(self):
-            if sort_by_name:
-                if t.config('dev_mode'):
+        def publishers_quick_by_rating(self, inject_rating_only=False):
+            rd = {}
+            rl = []
+            for publisher_id in self.publishers:
+
+                rd.update({publisher_id: []})
+
+                for volume_id in self.publishers[publisher_id]['sorted_volumes']:
+
+                    all_issues_for_volume_id = self.publishers[publisher_id]['sorted_volumes'][volume_id]
+                    rd[publisher_id] += [x for x in all_issues_for_volume_id if x[DB.comics.rating]]
+
+            for publisher_id, lst in rd.items():
+                if not lst:
+                    average_rating = 0
+                else:
+                    average_rating = [x[DB.comics.rating] for x in lst]
+                    average_rating = sum(average_rating) / len(lst)
+
+                rl.append((average_rating, publisher_id,))
+                self.publishers[publisher_id]['average_rating'] = average_rating
+
+            rl.sort(key=lambda x:x[0], reverse=True)
+
+            for i in rl:
+                if inject_rating_only:
+                    self.publishers[i[1]]['publisher_rating'] = i[0]
+                else:
+                    self.signal.drawpublisher.emit(i[1])
+
+        def generate_percentage_data(self):
+            tmp = [(len(self.publishers[x]['volumes']), self.publishers[x]['publisher_id'],) for x in self.publishers]
+            total = sum([x[0] for x in tmp])
+            for i in tmp:
+                self.publishers[i[1]]['volumes_count'] = i[0]
+                self.publishers[i[1]]['volume_percentage'] = i[0] / total
+                self.publishers[i[1]]['total_volume_count'] = total
+
+            publishers_quick_by_rating(self, inject_rating_only=True)
+
+        def post_drawing_publishers_sorting(self):
+            """
+            this has to be done after all publishers have been
+            draw because we dont know whats what before they're
+            all refreshed if needed from comicvine servers
+            """
+            # this is a little bit better experienced but it can appears to be frozen if comcivine refresh is needed
+            if t.config('dev_mode'):
+                generate_percentage_data(self)
+                if sort_by_name:
                     publishers_quick_by_name(self)
-                else:
-                    self.signal.sort_publishers_by_name.emit()
-
-        def check_sort_by_amount_post(self):
-            if sort_by_amount:
-
-                if t.config('dev_mode'):
+                elif sort_by_amount:
                     publishers_quick_by_amount(self)
-                else:
+                elif sort_by_rating:
+                    publishers_quick_by_rating(self)
+            else:
+                if sort_by_name:
+                    self.signal.sort_publishers_by_name.emit()
+                elif sort_by_amount:
                     self.signal.sort_publishers_by_amount.emit()
-
-        if not refresh:
-            if sort_by_name:
-                self.signal.sort_publishers_by_name.emit()
-
-            elif sort_by_amount:
-                self.signal.sort_publishers_by_amount.emit()
-
-            return
+                elif sort_by_rating:
+                    self.signal.sort_publishers_by_rating.emit()
 
         data = fetch_data()
 
@@ -733,16 +974,13 @@ class PUBtoVOLtoISSUEScroll(QtWidgets.QScrollArea):
 
             if count+1 == len(data) or data[count+1][DB.comics.publisher_id] != publisher_id:
 
-                # will redraw later down the line, quicker experience but can appear frozen therefore its a dev thingey
-                if t.config('dev_mode'):
-                    if sort_by_name or sort_by_amount:
+                if t.config('dev_mode'): # redrawing later in fn:post_drawing_publishers_sorting
+                    if sort_by_name or sort_by_amount or sort_by_rating:
                         continue
 
                 self.signal.drawpublisher.emit(publisher_id)
 
-        check_sort_by_name_post(self)
-        check_sort_by_amount_post(self)
-
+        post_drawing_publishers_sorting(self)
 
 class TOOLPublisher(POPUPTool):
 
@@ -755,27 +993,21 @@ class TOOLPublisher(POPUPTool):
         that they'll be drawn one and one when refreshed because sorting is not really possible
         until we know all names!
         """
-        self.main.shadehandler()
         title = 'PUBLISHERS'
+        self.main.shadehandler()
         self.publisher_widget = PUBtoVOLtoISSUEScroll(self.main.back, self.main, parent=self, title=title)
         self.publisher_widget.title.draw_sorting_menus(publishers=True)
 
         if t.config('p_sort_name' + title):
-            t.start_thread(
-                self.publisher_widget.show_publishers,
-                name='comicvine',
-                threads=1,
-                worker_arguments=(True,),
-            )
+            wa = (True,)
         elif t.config('p_sort_count' + title):
-            t.start_thread(
-                self.publisher_widget.show_publishers,
-                name='comicvine',
-                threads=1,
-                worker_arguments=(False,True,),
-            ) # todo fix start_thread
+            wa = (False, True,)
+        elif t.config('p_sort_rating' + title):
+            wa = (False, False, True,)
         else:
-            t.start_thread(self.publisher_widget.show_publishers, name='comicvine', threads=1)
+            wa = (False, False, False,) # silly i know, but it works
+
+        t.start_thread(self.publisher_widget.show_publishers, name='comicvine', threads=1, worker_arguments=wa)
 
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         self.activation_toggle(save=False)
@@ -785,6 +1017,42 @@ class TOOLPublisher(POPUPTool):
 
         else:
             signal = t.signals('kill_publisher_widget', delete_afterwards=True)
+            signal.finished.emit()
+
+class TOOLFolders(POPUPTool):
+    def create_browser_widget(self):
+        title = 'ALL FILES AND FOLDERS'
+        self.main.shadehandler()
+        self.browser_widget = PUBtoVOLtoISSUEScroll(
+            self.main.back, self.main, parent=self, title=title, killsignal='kill_browser_widget', width=700)
+        self.browser_widget.sort_label.close()
+        cycle = [
+            dict(conf='comic_folder', key=1, files=[]),
+            dict(conf='NSFW_folder', key=2, files=[]),
+            dict(conf='magazine_folder', key=3, files=[])
+        ]
+
+        self.browser_widget.base_folders = []
+        for dictionary in cycle:
+            folders = t.config(dictionary['conf'])
+            for i in folders:
+                if os.path.exists(i):
+                    self.browser_widget.base_folders.append(i)
+
+        self.browser_widget.base_folders.sort()
+
+        for folder in self.browser_widget.base_folders:
+            self.browser_widget.signal.drawfolder.emit(dict(path=folder, root=True))
+
+
+    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+        self.activation_toggle(save=False)
+
+        if self.activated:
+            self.create_browser_widget()
+
+        else:
+            signal = t.signals('kill_browser_widget', delete_afterwards=True)
             signal.finished.emit()
 
 class TOOLSort(POPUPTool):
@@ -965,8 +1233,7 @@ class TOOLMaxiMini(POPUPTool):
             self.main.showNormal()
 
     def set_position(self):
-        x = self.main.back.geometry().top() - 2
-        t.pos(self, size=(60, x,), right=self.main.quitter.geometry().left(), x_margin=2)
+        t.pos(self, right=dict(left=self.main.quitter), x_margin=1)
 
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
         self.activation_toggle()
@@ -1065,6 +1332,7 @@ class TOOLComicvine(POPUPTool):
     class APIKey(FolderSettingsAndGLobalHighlight):
         def post_init(self):
             self.manage_delete_button(create=True, text="")
+            self.delete_button.setToolTip('delete API key')
             self.delete_button.mousePressEvent = self.delete_cv_key
 
             key = t.config(self.type, curious=True)
@@ -1100,7 +1368,6 @@ class TOOLComicvine(POPUPTool):
             t.save_config(self.type, None, delete=True)
 
     def show_cv_settings(self):
-
         self.blackgray = UniversalSettingsArea(self.main)
 
         d1 = [
@@ -1214,419 +1481,3 @@ class TOOLWEBP(POPUPTool):
             self.blackgray.close()
             del self.blackgray
 
-
-# class POPUPTool(GLOBALDeactivate):
-#     def __init__(self, place, *args, **kwargs):
-#         super().__init__(place=place, *args, **kwargs)
-#
-#         self.directives['activation'] = [
-#             dict(object=self, background='rgba(200,50,50,150)'),
-#         ]
-#
-#         self.directives['deactivation'] = [
-#             dict(object=self, background=TXT_DARKTRANS),
-#         ]
-#
-#         self.activation_toggle(force=False, save=False)
-#         self.setAcceptDrops(True)
-#         self.setMouseTracking(True)
-#
-#     def dragEnterEvent(self, ev):
-#         if ev.mimeData().hasUrls() and len(ev.mimeData().urls()) == 1:
-#             file = ev.mimeData().urls()[0]
-#             file = file.path()
-#             if os.path.isfile(file):
-#                 splitter = file.split('.')
-#                 if splitter[-1].lower() in {'webp', 'jpg', 'jpeg', 'png', 'gif'}:
-#                     ev.accept()
-#         return
-#
-#
-#     def dropEvent(self, ev):
-#         if ev.mimeData().hasUrls() and ev.mimeData().urls()[0].isLocalFile():
-#             if len(ev.mimeData().urls()) == 1:
-#                 ev.accept()
-#
-#                 files = []
-#
-#                 for i in ev.mimeData().urls():
-#                     t.tmp_file('pixmap_' + self.type, hash=True, extension='webp', delete=True)
-#                     t.tmp_file(i.path(),              hash=True, extension='webp', delete=True)
-#
-#                     tmp_nail = generate_cover_from_image_file(
-#                         i.path(), store=False, height=self.height(), width=self.width())
-#
-#                     files.append(tmp_nail)
-#
-#                 for c in range(len(files)-1,-1,-1):
-#                     with open(files[c], 'rb') as f:
-#                         files[c] = f.read()
-#
-#                 if files:
-#                     t.save_config(self.type, files, image=True)
-#                     t.set_my_pixmap(self)
-
-
-
-# class TOOLSettings(POPUPTool):
-#     def trigger_settingswidget(self):
-#         if self.activated:
-#             self.create_reusable_settingswidget()
-#             self.main.settings.move(100, 100)
-#
-#         elif 'settings' in dir(self.main):
-#             self.main.settings.close()
-#             del self.main.settings
-#
-#
-#     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-#         self.activation_toggle(save=False)
-#         self.trigger_settingswidget()
-#
-#     def create_reusable_settingswidget(self):
-#         """
-#         creates a large settingsarea and then makes three smaller
-#         settingsboxes inside that area and places them around for
-#         more indepth about the how-to see UniversalSettingsArea
-#         """
-#         class FillRowSqueeze(CheckBoxSignalGroup, CheckableAndGlobalHighlight):
-#             def special(self):
-#                 if self.type == 'squeeze_mode':
-#                     return False
-#
-#                 if not t.config('squeeze_mode') and self.activated:
-#                     t.style(self.button, background='orange')
-#                     return True
-#
-#             def checkgroup_signal(self, signal):
-#                 if self.type == 'fill_row' and signal == 'squeeze_mode':
-#                     self.activation_toggle(force=self.activated, save=False)
-#
-#             def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-#                 if ev.button() == 1:
-#                     self.activation_toggle()
-#                     self.signalgroup.checkgroup_master.emit(self.type)
-#
-#         class PATHExtenders(FolderSettingsAndGLobalHighlight):
-#             def special(self):
-#                 if self.activated:
-#                     rv = t.config(self.type, curious=True)
-#
-#                     if rv and type(rv) == list:
-#                         t.style(self.button, background='green')
-#                     else:
-#                         t.style(self.button, background='orange')
-#                 else:
-#                     t.style(self.button, background='gray')
-#                 return True
-#
-#             def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-#                 if ev.button() == 1:
-#                     self.activation_toggle()
-#
-#         dict_with_checkables = [
-#             dict(
-#                 text="SHOW COMICS", textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip='else excluding files marked as Comics',
-#                 kwargs = dict(type='show_comics'),
-#             ),
-#             dict(
-#                 text='SHOW MAGAZINES', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip='else excluding files marked as Magazines',
-#                 kwargs = dict(type='show_magazines'),
-#
-#             ),
-#             dict(
-#                 text='SHOW NSFW', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip='else excluding files marked as porn',
-#                 kwargs = dict(type='show_NSFW')
-#             ),
-#             dict(
-#                 text='SQUEEZE MODE', textsize=TEXTSIZE,
-#                 widget=FillRowSqueeze, post_init=True,
-#                 tooltip='contract/expand covers until they claim all space in full rows (looks good, but only tries to honor aspekt ratio)',
-#                 kwargs = dict(signalgroup='squeeze_fill_group', type='squeeze_mode'),
-#             ),
-#             dict(
-#                 text='FILLING ROW', textsize=TEXTSIZE,
-#                 widget=FillRowSqueeze, post_init=True,
-#                 tooltip='exceeding limit until row is full, requires Squeeze Mode (looks better)',
-#                 kwargs = dict(signalgroup='squeeze_fill_group', type='fill_row'),
-#             ),
-#             dict(
-#                 text='COVER BLOB', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip='stores thumbnails into database (100x faster loading speed next time you browse the same item at the cost of increasing local databse by ~25kb per item (depending on thumbnail size))',
-#                 kwargs = dict(type='cover_blob'),
-#             ),
-#             dict(
-#                 text='COVERS PRE-DRAW', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip='show covers when prepositioning covers (takes a millisecond per item on a good computer)',
-#                 kwargs = dict(type='pre_squeeze')
-#             ),
-#             ]
-#
-#         dict_with_lcdrow = [
-#             dict(
-#                 text='COVER HEIGHT', textsize=TEXTSIZE,
-#                 kwargs = dict(type='cover_height')),
-#             dict(
-#                 text='BATCH SIZE', textsize=TEXTSIZE,
-#                 kwargs = dict(type='batch_size')),
-#         ]
-#
-#         dict_with_paths = [
-#             dict(
-#                 text='COMICS FOLDER', textsize=TEXTSIZE,
-#                 tooltip='CBZ files',
-#                 widget=FolderSettingsAndGLobalHighlight,
-#                 kwargs = dict(type='comic_folder')),
-#             dict(
-#                 text='MAGAZINES', textsize=TEXTSIZE,
-#                 widget=FolderSettingsAndGLobalHighlight,
-#                 tooltip='regular magazines folder ...',
-#                 kwargs = dict(type='magazine_folder')),
-#             dict(
-#                 text='NSFW FOLDER', textsize=TEXTSIZE,
-#                 tooltip='found a mouse ...',
-#                 widget=FolderSettingsAndGLobalHighlight,
-#                 kwargs=dict(type='NSFW_folder')),
-#             dict(
-#                 text='CACHE FOLDER', textsize=TEXTSIZE,
-#                 widget=FolderSettingsAndGLobalHighlight,
-#                 tooltip='must exist! (else fallback to systems-tmp)',
-#                 kwargs = dict(type='cache_folder', multiple_folders=False)),
-#         ]
-#
-#         dict_with_cover_details = [
-#             dict(
-#                 text='RATING', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 kwargs = dict(type='show_ratings')),
-#             dict(
-#                 text='READING PROGRESS', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip="shows a progress bar from left to right according to the current highest pagenumber you've opened",
-#                 kwargs = dict(type='show_reading_progress')),
-#             dict(
-#                 text='PAGES AND SIZE', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 kwargs = dict(type='show_page_and_size')),
-#             dict(
-#                 text='UNTAGGED FLAG', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip='if we cannot find a comicvine id with this file, a small square is positioned in the upper right corner indicating that',
-#                 kwargs = dict(type='show_untagged_flag')
-#             )
-#         ]
-#
-#         full_shade = [
-#             dict(
-#                 text='SHADE SURROUNDINGS', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip='when you study or read an issue, all surroudings are darkley shaded, looks good.',
-#                 kwargs = dict(type='shade_surroundings')),
-#         ]
-#         class DEVMODE(CheckableAndGlobalHighlight):
-#
-#             def special(self):
-#                 if self.activated:
-#                     t.style(self.button, background='pink')
-#                     t.style(self.textlabel, color='pink')
-#                 else:
-#                     t.style(self.button, background='gray')
-#                     t.style(self.textlabel, color='gray')
-#
-#                 return True
-#
-#             def default_event_colors(self):
-#                 self.directives['activation'] = [
-#                     dict(object=self.textlabel, color='lightBlue'),
-#                     dict(object=self.button, background='lightBlue', color='pink'),
-#                 ]
-#
-#                 self.directives['deactivation'] = [
-#                     dict(object=self.textlabel, color='gray'),
-#                     dict(object=self.button, background='gray', color='gray'),
-#                 ]
-#
-#             def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-#                 self.activation_toggle()
-#                 sqlite.dev_mode = self.activated
-#
-#         dev_mode = [
-#             dict(
-#                 text='DEVELOPER FEATURES', textsize=TEXTSIZE,
-#                 shrink_to_text=True,
-#                 widget=DEVMODE, post_init=True,
-#                 tooltip='source code explains',
-#                 kwargs = dict(type='dev_mode')),
-#         ]
-#
-#         dict_with_pdf_things = [
-#             dict(
-#                 text = 'PDF SUPPORT', textsize=TEXTSIZE, widget=PATHExtenders,
-#                 tooltip = "this may not be a plesent experience since it depends on poppler path. if your'e on windows, i'd say you doomed if you dont know what you're doing and i suggest you leave this in the red",
-#                 kwargs = dict(type='pdf_support', multiple_folders=False)),
-#         ]
-#
-#         dict_with_unpackers = [
-#             dict(
-#                 text = 'WinRAR', textsize=TEXTSIZE, widget=PATHExtenders,
-#                 tooltip = "if you're on windows and want CBR file support you need to either have WinRAR.exe in you systems path or provide it here",
-#                 kwargs = dict(type='winrar_support', multiple_folders=False)),
-#             dict(
-#                 text='7-Zip', textsize=TEXTSIZE, widget=PATHExtenders,
-#                 tooltip="alternative to WinRAR",
-#                 kwargs=dict(type='zip7_support', multiple_folders=False)),
-#         ]
-#
-#         dict_with_autoupdate = [
-#             dict(
-#                 text = 'LIBRARY AUTOUPDATE', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip = "autoupdates on start and when you close settings panel",
-#                 kwargs = dict(type='autoupdate_library')),
-#         ]
-#
-#         dict_update_hash = [
-#             dict(
-#                 text='SCAN FOR NEW FILES', textsize=TEXTSIZE, button_width_factor=2.2,
-#                 button_color='darkCyan', text_color='gray', post_init=True,
-#                 widget=self.UpdateLibrary, button_text='',
-#                 tooltip='updates library in the background',
-#                 kwargs = dict(type='_update_library')),
-#         ]
-#
-#         dict_parse_for_cvid = [
-#             dict(
-#                 text='PARSE UNPARSED FILES', textsize=TEXTSIZE, button_width_factor=2.2,
-#                 button_color='darkCyan', text_color='gray', post_init=True,
-#                 widget=self.HashUnHashed, button_text='',
-#                 tooltip='iters all unitered comics for comicvine id (comictagger), we do this once per file as long as MD5 is checked (thats how we track such event for now, if MD5 is not checked all files will be processed next time again, and again, and again...)',
-#                 kwargs = dict(type='_parse_unparsed')),
-#         ]
-#
-#         dict_md5_comic = [
-#             dict(
-#                 text='HASH MD5 FROM NEW FILES', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip='first time an item is to be shown to user an MD5 checksum is initiated and stored into database, this is conveniet when keeping track of multiple files and sharing ratings with friends',
-#                 kwargs = dict(type='md5_files')),
-#
-#             dict(
-#                 text='SEARCH ZIP FOR CVID', textsize=TEXTSIZE,
-#                 widget=CheckableAndGlobalHighlight, post_init=True,
-#                 tooltip='searches the file contents for comicvine id (comictagger)',
-#                 kwargs = dict(type='comictagger_file'))
-#         ]
-#
-#         self.main.settings = UniversalSettingsArea(self.main, type='settings', activation_toggle=self.activation_toggle)
-#
-#         blackgray1 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_with_checkables, canvaswidth=250)
-#         blackgray2 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_with_cover_details, canvaswidth=250)
-#         blackgray3 = self.main.settings.make_this_into_folder_settings(headersdictionary=dict_with_paths)
-#         blackgray4 = self.main.settings.make_this_into_LCDrow(headersdictionary=dict_with_lcdrow, canvaswidth=250)
-#         blackgray5 = self.main.settings.make_this_into_folder_settings(headersdictionary=dict_with_pdf_things)
-#         blackgray5_1 = self.main.settings.make_this_into_folder_settings(headersdictionary=dict_with_unpackers)
-#         blackgray6 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_update_hash, canvaswidth=300)
-#         blackgray7 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_md5_comic)
-#         blackgray8 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_with_autoupdate)
-#         blackgray9 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=full_shade)
-#         blackgray10 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dev_mode)
-#         blackgray11 = self.main.settings.make_this_into_checkable_buttons(headersdictionary=dict_parse_for_cvid, canvaswidth=300)
-#
-#         header = self.main.settings.make_header(title='SETTINGS')
-#
-#         t.pos(blackgray2, below=blackgray1, y_margin=10)
-#         t.pos(blackgray6, after=blackgray1, x_margin=10)
-#         t.pos(blackgray3, below=blackgray6, left=blackgray6, y_margin=10)
-#         t.pos(blackgray4, below=blackgray2, y_margin=10)
-#         t.pos(blackgray5, left=blackgray3, below=blackgray3, y_margin=10)
-#         t.pos(blackgray5_1, left=blackgray3, below=blackgray5, y_margin=10)
-#         t.pos(blackgray8, left=blackgray5, below=blackgray5_1, y_margin=10)
-#         t.pos(blackgray7, below=blackgray8, y_margin=10, left=blackgray8)
-#         t.pos(blackgray9, below=blackgray4, y_margin=10)
-#         t.pos(blackgray10, below=blackgray9, y_margin=10)
-#         t.pos(blackgray11, after=blackgray6, x_margin=10)
-#
-#         t.pos(header, right=blackgray3, bottom=blackgray6)
-#
-#         self.main.settings.expand_me(self.main.settings.blackgrays)
-#
-#         signal = t.signals(self.type, reset=True)
-#         signal.activated.connect(self.before_close_event)
-#
-#     def before_close_event(self):
-#         if not self.activated and t.config('autoupdate_library'):
-#             t.start_thread(scan_for_new_comics, name='update_library', threads=1)
-#
-#     class UpdateLibrary(GLOBALDeactivate, ExecutableLookCheckable):
-#         def __init__(self, *args, **kwargs):
-#             super().__init__(*args, **kwargs)
-#             self.activation_toggle(force=False)
-#
-#         def post_init(self):
-#             self.button.setMouseTracking(True)
-#             self.textlabel.setMouseTracking(True)
-#
-#             self.directives['activation'] = [
-#                 dict(object=self.textlabel, color='white'),
-#                 dict(object=self.button, background='cyan', color='cyan'),
-#             ]
-#
-#             self.directives['deactivation'] = [
-#                 dict(object=self.textlabel, color='gray'),
-#                 dict(object=self.button, background='darkCyan', color='darkCyan'),
-#             ]
-#
-#         def special(self):
-#             return True
-#
-#         def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-#             if self.running_job: # jobs running
-#                 return
-#
-#             self.slaves_can_alter = False
-#             self.running_job = True
-#             self.start_job(signalgroup='updating_library_job')
-#             t.start_thread(scan_for_new_comics,
-#                            finished_function=self.jobs_done, name='update_library', threads=1, worker_arguments=False)
-#
-#     class HashUnHashed(GLOBALDeactivate, ExecutableLookCheckable):
-#         def __init__(self, *args, **kwargs):
-#             super().__init__(*args, **kwargs)
-#             self.activation_toggle(force=False)
-#
-#         def post_init(self):
-#             self.button.setMouseTracking(True)
-#             self.textlabel.setMouseTracking(True)
-#
-#             self.directives['activation'] = [
-#                 dict(object=self.textlabel, color='white'),
-#                 dict(object=self.button, background='cyan', color='cyan'),
-#             ]
-#
-#             self.directives['deactivation'] = [
-#                 dict(object=self.textlabel, color='gray'),
-#                 dict(object=self.button, background='darkCyan', color='darkCyan'),
-#             ]
-#
-#         def special(self):
-#             return True
-#
-#         def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-#             if self.running_job: # jobs running
-#                 return
-#
-#             self.running_job = True
-#             self.start_job(signalgroup='hash_unhashed_job')
-#             t.start_thread(
-#                 hash_all_unhashed_comics,
-#                 finished_function=self.jobs_done,
-#                 name='long_time', threads=1
-#             )

@@ -19,7 +19,7 @@
      <number>0</number>
     </property>
     <property name="topMargin">
-     <number>30</number>
+     <number>22</number>
     </property>
     <property name="rightMargin">
      <number>0</number>
@@ -92,7 +92,7 @@
             <x>0</x>
             <y>0</y>
             <width>800</width>
-            <height>570</height>
+            <height>578</height>
            </rect>
           </property>
           <property name="sizePolicy">

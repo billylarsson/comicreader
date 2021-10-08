@@ -5,13 +5,12 @@ from PyQt5.QtWidgets         import QShortcut
 from bscripts.comic_drawing  import ComicWidget
 from bscripts.database_stuff import DB, sqlite
 from bscripts.file_handling  import scan_for_new_comics
+from bscripts.settings_area  import TOOLSettings
 from bscripts.tricks         import tech as t
 from bscripts.widgets        import TOOLBatch, TOOLComicvine, TOOLMaxiMini
-from bscripts.widgets        import TOOLQuit, TOOLRank, TOOLReading, TOOLSearch
-from bscripts.widgets        import TOOLSort, TOOLWEBP,TOOLPublisher
-from bscripts.settings_area import TOOLSettings
+from bscripts.widgets        import TOOLPublisher, TOOLQuit, TOOLRank
+from bscripts.widgets        import TOOLReading, TOOLSearch, TOOLSort, TOOLWEBP,TOOLFolders
 import os
-import sys
 import time
 
 class LSComicreaderMain(QtWidgets.QMainWindow):
@@ -81,44 +80,56 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         creates the buttons that are visible on the bar
         """
         dlist = [
-            dict(config='tool_searcher', widget=TOOLSearch, widthmultiplyer=1),
-            dict(config='tool_settings', widget=TOOLSettings, widthmultiplyer=1),
-            dict(config='tool_sorter', widget=TOOLSort, widthmultiplyer=1),
-            dict(config='tool_publisher', widget=TOOLPublisher, widthmultiplyer=1.3),
-            dict(config='tool_reader', widget=TOOLReading, widthmultiplyer=1),
-            dict(config='tool_webp', widget=TOOLWEBP, widthmultiplyer=1),
-            dict(config='tool_ranking', widget=TOOLRank, widthmultiplyer=1),
-            dict(config='tool_comicvine', widget=TOOLComicvine, widthmultiplyer=1.3),
-            dict(config='tool_batch', widget=TOOLBatch, widthmultiplyer=0),
+            dict(config='tool_searcher', widget=TOOLSearch, text='SEARCH'),
+            dict(config='tool_settings', widget=TOOLSettings, text='CONFIG'),
+            dict(config='tool_sorter', widget=TOOLSort, text='SORT'),
+            dict(config='tool_folderbrowse', widget=TOOLFolders, text='BROWSE', tooltip="browse all files and folders you've added in settings"),
+            dict(config='tool_publisher', widget=TOOLPublisher, text='BROWSE+', tooltip='browse only publishers/volumes/issues that are paired with comicvine'),
+            dict(config='tool_reader', widget=TOOLReading, text='READ MODE'),
+            dict(config='tool_webp', widget=TOOLWEBP, text='WEBP'),
+            dict(config='tool_ranking', widget=TOOLRank, text='QUICK KEYS'),
+            dict(config='tool_comicvine', widget=TOOLComicvine, text='COMICVINE'),
+            dict(config='tool_batch', widget=TOOLBatch, text='BATCH'),
         ]
+
+        def size_to_text(label, text):
+            x = self.back.geometry().top() - 2
+            label.setText(text)
+            label.setAlignment(QtCore.Qt.AlignVCenter|QtCore.Qt.AlignHCenter)
+            t.pos(label, width=500, height=x, move=[1,1])
+            t.correct_broken_font_size(label)
+            width = label.fontMetrics().boundingRect(label.text()).width()
+            t.pos(label, width=width, add=8)
+            label.highlight_toggle()
 
         for count, d in enumerate(dlist):
             conf = d['config']
             widget = d['widget']
-
             label = widget(self, type=conf)
+            size_to_text(label, d['text'])
+            if 'tooltip' in d:
+                label.setToolTip(d['tooltip'])
 
             d.update(dict(label=label))
 
             if count == 0:
-                x = self.back.geometry().top() - 2
-                t.pos(label, size=(x*3, x,), move=(1, 1,))
                 label.show_searchwidget()
-
             else:
                 prelabel = dlist[count - 1]['label']
-                startlabel = dlist[0]['label']
                 if count == 1:
-                    t.pos(label, coat=prelabel, after=self.le_primary_search, x_margin=1)
+                    t.pos(label, after=self.le_primary_search, x_margin=1)
                 else:
-                    t.pos(label, size=startlabel, after=prelabel, x_margin=1)
-                    t.pos(label, width=label.width() * d['widthmultiplyer'])
-
-            t.set_my_pixmap(label)
+                    t.pos(label, after=prelabel, x_margin=1)
 
 
         self.quitter = TOOLQuit(self, type='quit_button')
+        size_to_text(self.quitter, 'QUIT')
+        t.pos(self.quitter, right=self, move=[-1,-1])
         self.minmax = TOOLMaxiMini(self, main=self, type='minimaxi')
+        size_to_text(self.minmax, '< -oo- >')
+        t.pos(self.minmax, right=dict(left=self.quitter), x_margin=1, move=[-1,-1])
+        signal = t.signals('global_on_off_signal')
+        signal.deactivate.emit('_')
 
 
     def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
@@ -308,8 +319,8 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                 self.batch_status.show()
                 w = self.batch_status.fontMetrics().boundingRect(self.batch_status.text()).width()
                 h = self.batch_status.fontMetrics().boundingRect(self.batch_status.text()).height()
-                if self.batcher.height() >= h + 6 or count == 6:
-                    t.pos(self.batch_status, width=w+6, left=self.batcher, height=self.batcher)
+                if self.batcher.height() >= h + 2 or count == 6:
+                    t.pos(self.batch_status, width=w+6, left=dict(right=self.batcher), height=self.batcher)
                     t.pos(self.batch_status, width=self.batch_status, add=30)
                     break
 
@@ -513,6 +524,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             self.old_position = ev.globalPos()
 
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
-        if 'old_position' in dir(self):
-            del self.old_position
+        pass
+        # if 'old_position' in dir(self):
+        #     del self.old_position
 

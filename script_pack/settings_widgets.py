@@ -1,10 +1,9 @@
-from PyQt5           import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore    import QPoint, Qt
-from bscripts.tricks import tech as t
+from PyQt5                     import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore              import QPoint
+from bscripts.tricks           import tech as t
+from script_pack.preset_colors import *
 import os
 import time
-from script_pack.preset_colors import *
-
 
 
 class GOD(QtWidgets.QLabel):

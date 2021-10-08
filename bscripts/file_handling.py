@@ -1,18 +1,16 @@
-import pathlib
-from PIL                    import Image, ImageFont
-from pdf2image              import convert_from_path, pdfinfo_from_path
+from PIL                     import Image
 from bscripts.database_stuff import DB, sqlite
 from bscripts.tricks         import tech as t
-from zipfile                import BadZipFile, ZipFile
-import copy
-import subprocess
+from pdf2image               import convert_from_path, pdfinfo_from_path
+from zipfile                 import BadZipFile, ZipFile
 import concurrent.futures
-from PIL           import  Image, ImageDraw, UnidentifiedImageError
-import platform
+import copy
 import os
 import pickle
+import platform
 import rarfile
 import shutil
+import subprocess
 import time
 
 def extract_from_zip_or_pdf(file=None, database=None, index=0):

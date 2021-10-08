@@ -1,8 +1,8 @@
-from functools import partial
 from PyQt5                        import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore                 import QPoint, Qt
 from PyQt5.QtGui                  import QKeySequence, QPixmap
 from PyQt5.QtWidgets              import QShortcut
+from bscripts.comic_drawing       import ComicWidget, Cover, PAGE
 from bscripts.comicvine_stuff     import comicvine
 from bscripts.database_stuff      import DB, sqlite
 from bscripts.file_handling       import FileArchiveManager
@@ -12,6 +12,7 @@ from bscripts.file_handling       import concurrent_pdf_to_webp_convertion
 from bscripts.file_handling       import extract_from_zip_or_pdf
 from bscripts.file_handling       import get_thumbnail_from_zip_or_database
 from bscripts.tricks              import tech as t
+from functools                    import partial
 from script_pack.preset_colors    import *
 from script_pack.settings_widgets import ExecutableLookCheckable
 from script_pack.settings_widgets import FolderSettingsAndGLobalHighlight
@@ -22,7 +23,6 @@ import copy
 import os
 import pickle
 import shutil
-from bscripts.comic_drawing import Cover, ComicWidget, PAGE
 
 class INFOCoverWidget(Cover):
     def __init__(self, place, main=None, type=None):
