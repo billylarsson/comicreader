@@ -1,7 +1,6 @@
 # comicreader
 under construction, it will run and you can do alot but if you break something dont blame me
-![Untitled](https://user-images.githubusercontent.com/59517785/135051548-e75acdce-37d2-4a0d-9aff-417b7e23d26b.png)
-
+![Screenshot from 2021-10-08 21-22-22](https://user-images.githubusercontent.com/59517785/136614432-e6602d61-dc0a-4c6a-a251-6c847edd9698.png)
 
 INSTALLATION:
 
@@ -13,13 +12,13 @@ pip install -r requirements.txt --user
 
 Microsoft Windows
 
-3.1: You may want to install WinRAR and provide the path in this programs configurations area.
+3.a: You may want to install WinRAR and provide the path in this programs configurations area.
 https://www.rarlab.com/download.htm
 
-3.2: You may want to install 7-Zip instead of WinRAR (but as for now WinRAR is more compatible even though I personally oppose WinRAR for other reasons)
+3.b: You may want to install 7-Zip instead of WinRAR (but as for now WinRAR is more compatible even though I personally oppose WinRAR for other reasons)
 https://www.7-zip.org/download.html
 
-3.3: If you want PDF support you may want to download Poppler and point the program its binaries ie c:\Program Files\poppler-0.68.0\bin\
+3.c: If you want PDF support you may want to download Poppler and point the program its binaries ie c:\Program Files\poppler-0.68.0\bin\
 http://blog.alivate.com.au/poppler-windows/
 
 RUNNING:
