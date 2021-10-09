@@ -6,6 +6,7 @@ from PyQt5.QtGui             import QPixmap
 from bscripts.database_stuff import DB, sqlite
 from functools               import partial
 from urllib.request          import Request, urlopen
+import urllib
 import hashlib
 import os
 import pathlib
@@ -18,6 +19,7 @@ import tempfile
 import time
 import traceback
 import uuid
+import ssl
 
 default_dict = dict(
     settings=dict(
@@ -648,10 +650,14 @@ class ViktorinoxTechClass:
         while not os.path.exists(loc.full_path) and spamfriendly:
             spamfriendly -= 1
 
-            url = Request(url, headers=headers)
-
-            try: webpage = urlopen(url).read()
-            except: return False
+            urlobj = Request(url, headers=headers)
+            try: webpage = urlopen(urlobj).read()
+            except:
+                gcontext = ssl.SSLContext()
+                urlobj = Request(url, headers=headers)
+                try: webpage = urlopen(urlobj, context=gcontext).read()
+                except:
+                    return False
 
             with open(loc.full_path, 'wb') as new_file:
                 new_file.write(webpage)
