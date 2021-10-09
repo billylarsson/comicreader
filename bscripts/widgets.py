@@ -1,4 +1,3 @@
-import os
 from PyQt5                        import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore                 import QPoint
 from PyQt5.QtGui                  import QColor, QPen
@@ -11,6 +10,7 @@ from script_pack.settings_widgets import FolderSettingsAndGLobalHighlight
 from script_pack.settings_widgets import GLOBALDeactivate, GOD
 from script_pack.settings_widgets import HighlightRadioBoxGroup, POPUPTool
 from script_pack.settings_widgets import UniversalSettingsArea
+import os
 import sys
 
 TEXTSIZE = 14

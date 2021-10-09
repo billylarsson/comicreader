@@ -1,4 +1,4 @@
-from PyQt5                   import QtCore, QtGui, QtWidgets, uic
+from PyQt5                   import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore            import QPoint, Qt
 from PyQt5.QtGui             import QKeySequence
 from PyQt5.QtWidgets         import QShortcut
@@ -7,18 +7,70 @@ from bscripts.database_stuff import DB, sqlite
 from bscripts.file_handling  import scan_for_new_comics
 from bscripts.settings_area  import TOOLSettings
 from bscripts.tricks         import tech as t
-from bscripts.widgets        import TOOLBatch, TOOLComicvine, TOOLMaxiMini
-from bscripts.widgets        import TOOLPublisher, TOOLQuit, TOOLRank
-from bscripts.widgets        import TOOLReading, TOOLSearch, TOOLSort, TOOLWEBP,TOOLFolders
+from bscripts.widgets        import TOOLBatch, TOOLComicvine, TOOLFolders
+from bscripts.widgets        import TOOLMaxiMini, TOOLPublisher, TOOLQuit
+from bscripts.widgets        import TOOLRank, TOOLReading, TOOLSearch, TOOLSort
+from bscripts.widgets        import TOOLWEBP
 import os
-import time
 import platform
+import time
 
 class LSComicreaderMain(QtWidgets.QMainWindow):
     def __init__(self, primary_screen):
         super(LSComicreaderMain, self).__init__()
-        uic.loadUi('./gui/main_v4.ui', self)
-        self.setWindowTitle('Python Comicreader v2.0.1 alpha')
+
+        self.centralwidget = QtWidgets.QWidget(self)
+
+        self._gridlayout = QtWidgets.QGridLayout(self.centralwidget)
+        self._gridlayout.setContentsMargins(0, 22, 0, 0)
+        self._gridlayout.setSpacing(0)
+
+        self.back = QtWidgets.QFrame(self.centralwidget)
+        self.back.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.back.setFrameShadow(QtWidgets.QFrame.Plain)
+        self.back.setLineWidth(0)
+
+        self.grid_layout = QtWidgets.QGridLayout(self.back)
+        self.grid_layout.setContentsMargins(0, 0, 0, 0)
+        self.grid_layout.setSpacing(0)
+
+        self.scroll_area = QtWidgets.QScrollArea(self.back)
+
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(1)
+        sizePolicy.setVerticalStretch(1)
+        sizePolicy.setHeightForWidth(self.scroll_area.sizePolicy().hasHeightForWidth())
+
+        self.scroll_area.setSizePolicy(sizePolicy)
+        self.scroll_area.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.scroll_area.setFrameShadow(QtWidgets.QFrame.Plain)
+        self.scroll_area.setLineWidth(0)
+        self.scroll_area.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.scroll_area.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
+        self.scroll_area.setWidgetResizable(True)
+
+        self.scrollcanvas_main = QtWidgets.QWidget()
+
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
+        sizePolicy.setHorizontalStretch(1)
+        sizePolicy.setVerticalStretch(1)
+        sizePolicy.setHeightForWidth(self.scrollcanvas_main.sizePolicy().hasHeightForWidth())
+
+        self.scrollcanvas_main.setSizePolicy(sizePolicy)
+
+        self.__gridlayout = QtWidgets.QGridLayout(self.scrollcanvas_main)
+        self.__gridlayout.setContentsMargins(0, 0, 0, 0)
+        self.__gridlayout.setSpacing(0)
+
+        self.scroll_area.setWidget(self.scrollcanvas_main)
+
+        self.grid_layout.addWidget(self.scroll_area, 0, 0, 1, 1)
+
+        self._gridlayout.addWidget(self.back, 0, 0, 1, 1)
+        self.setCentralWidget(self.centralwidget)
+
+        self.setWindowTitle('Python Comicreader v2.0.2 alpha')
         sqlite.dev_mode = t.config('dev_mode')
         t.style(self, name='main')
         self.widgets = dict(main=[], info=[])
