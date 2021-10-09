@@ -102,9 +102,6 @@ class INFOWidget(ComicWidget):
             container = getattr(self, variable)
             if type(container) == list:
                 t.close_and_pop(container)
-                # for count in range(len(container) - 1, -1, -1):
-                #     container[count].close()
-                #     container.pop(count)
             else:
                 container.close()
                 delattr(self, variable)
