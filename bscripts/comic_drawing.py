@@ -1528,7 +1528,7 @@ class ComicWidget(GOD):
             self.main.shadehandler()
 
             infowidget = INFOWidget(self.main.back, self, self.main, type='info_widget', database=self.database)
-            infowidget.move(300,10)
+            infowidget.move(300,40)
             self.main.widgets['info'].append(infowidget)
 
     def delete_box_of_details(self, all=True):

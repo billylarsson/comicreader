@@ -229,7 +229,7 @@ def generate_cover_from_image_file(path,
     :return: full_path
     """
     def store_into_database(tmp_file):
-        if store and database and not database[DB.comics.cover]:
+        if store and database and database[0] and not database[DB.comics.cover]:
             with open(tmp_file, 'rb') as file:
                 blob = file.read()
                 query = 'update comics set cover = (?) where id = (?)'

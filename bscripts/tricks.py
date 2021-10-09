@@ -1058,6 +1058,9 @@ class ViktorinoxTechClass:
         elif tech.config('sort_by_date_added'):
             fromlist.sort(key=lambda x: x[0], reverse=reverse)
 
+        elif tech.config('sort_by_number'):
+            fromlist = tech.sort_by_number(fromlist, DB.comics.issue_number, reverse=reverse)
+
         else:
             sorted_list = []
             tmp = {}

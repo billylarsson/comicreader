@@ -245,7 +245,6 @@ class INFOWidget(ComicWidget):
                 t.correct_broken_font_size(read_beginning, maxsize=36)
                 return read_beginning, None
 
-
         def make_local_path_widget(self):
             class LocalPathLE(FolderSettingsAndGLobalHighlight):
                 def post_init(self):
@@ -1123,6 +1122,12 @@ class INFOWidget(ComicWidget):
                     else:
                         self.manage_save_button(delete=True)
 
+            def use_deletebutton_to_signal_when_cv_done(self, d):
+                delete_button = d[0]['label'].delete_button
+                t.style(delete_button, background='red')
+                cvsignal = t.signals('cv_jobs_done' + str(self.database[0]), reset=True)
+                cvsignal.finished.connect(lambda: t.style(delete_button, background=DARKRED))
+
             set7 = UniversalSettingsArea(self,extravar=dict(fortifyed=True))
             t.pos(set7, height=36, above=set6, y_margin=3)
 
@@ -1142,6 +1147,7 @@ class INFOWidget(ComicWidget):
             ]
             set7.make_this_into_folder_settings(d, toolsheight=30, extend_le_til=set6, labelwidth=80)
             set7.expand_me(set7.blackgrays)
+            use_deletebutton_to_signal_when_cv_done(self, d)
             return set7
 
         expandlater = []
@@ -1211,6 +1217,15 @@ class INFOWidget(ComicWidget):
             else:
                 t.pos(self.volumeslabel, top=dict(bottom=self), y_margin=3, left=self)
 
+        if 'draw_volumes_button' in dir(self):
+            t.pos(self.draw_volumes_button,
+                  width=self.relatives[0],
+                  height=20,
+                  above=self.relatives[0],
+                  y_margin=3,
+                  sub=2
+                  )
+
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
         self.activation_toggle(force=True, save=False)
 
@@ -1255,7 +1270,8 @@ class INFOWidget(ComicWidget):
                 dictionary['center'] = True
                 dictionary['used'] = True
 
-                thumb = get_thumbnail_from_zip_or_database(database=self.database)
+                height = t.config('cover_height')
+                thumb = get_thumbnail_from_zip_or_database(database=self.database, height=height)
 
                 return dict(
                     database=self.database, image_path=thumb, center=True, count=dictionary['count'])
@@ -1294,7 +1310,8 @@ class INFOWidget(ComicWidget):
             thumb = None
 
             if candidate['database'][0]:
-                thumb = get_thumbnail_from_zip_or_database(database=candidate['database'], proxy=False)
+                height = t.config('cover_height')
+                thumb = get_thumbnail_from_zip_or_database(database=candidate['database'], height=height, proxy=False)
             else:
                 rv = comicvine(issue=candidate['database'])
                 if rv:
@@ -1512,6 +1529,8 @@ class INFOWidget(ComicWidget):
         maxrelatives = len([x for x in candidates if x['used']])
 
         if len(candidates) < 2: # ignore if just one
+            cvsignal = t.signals('cv_jobs_done' + str(self.database[0]))
+            cvsignal.finished.emit()
             return
 
         class SmallVolume(GLOBALDeactivate):
@@ -1742,7 +1761,39 @@ class INFOWidget(ComicWidget):
                     if add_if_usable(self, volumes[count], shorter=True):
                         break
 
+        self.create_draw_all_volumes_button()
         self.volumeslabel.position_volumes()
+
+        cvsignal = t.signals('cv_jobs_done' + str(self.database[0]))
+        cvsignal.finished.emit()
+
+    def create_draw_all_volumes_button(self):
+        class DrawVolumesButton(GLOBALDeactivate):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.setFrameShape(QtWidgets.QFrame.Box)
+                self.setLineWidth(1)
+                self.setAlignment(QtCore.Qt.AlignHCenter|QtCore.Qt.AlignVCenter)
+                self.setText('SEND TO MAIN')
+                t.correct_broken_font_size(self, x_margin=2, y_margin=0)
+                self.signal_global_gui_change(directive='deactivation', color='gray') # todo large fix
+
+            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                volumes = [x['database'] for x in self.volumes if x['database'][0]]
+                self.main.search_comics(volumes)
+
+        if 'draw_volumes_button' in dir(self):
+            return
+
+        self.draw_volumes_button = DrawVolumesButton(
+            self.main.back,
+            main=self.main,
+            type='_draw_volumes_button',
+            extravar=dict(
+                volumes=self.volumeslabel.volumes,
+                relatives=self.relatives,
+            ))
+
 
     def quit(self, signal=True):
         """
@@ -1754,6 +1805,8 @@ class INFOWidget(ComicWidget):
 
         self.close_and_pop_list('relatives')
         self.close_and_pop_list('volumeslabel')
+        if 'draw_volumes_button' in dir(self):
+            self.draw_volumes_button.close()
 
         self.close()
 

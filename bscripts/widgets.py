@@ -480,7 +480,7 @@ class BrowseFolder(CVIDFileBrowse):
 
 class BrowseVolume(CVIDFileBrowse):
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-        results = t.uni_sort(self.data['issues'])
+        results = t.sort_by_number(self.data['issues'], DB.comics.issue_number)
         self.main.search_comics(highjack=results)
 
 class BrowsePublisher(CVIDFileBrowse):
@@ -1108,6 +1108,14 @@ class TOOLSort(POPUPTool):
                 kwargs=dict(
                     signalgroup='sort_modes_group',
                     type='sort_by_rating',)
+            ),
+            dict(
+                text='SORT BY NUMBER', textsize=TEXTSIZE, post_init=True,
+                widget=HighlightRadioBoxGroup,
+                tooltip='can easially result in bad experience when mixing paired and unpaired comics',
+                kwargs=dict(
+                    signalgroup='sort_modes_group',
+                    type='sort_by_number', )
             ),
         ]
 
