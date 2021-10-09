@@ -1123,10 +1123,11 @@ class INFOWidget(ComicWidget):
                         self.manage_save_button(delete=True)
 
             def use_deletebutton_to_signal_when_cv_done(self, d):
-                delete_button = d[0]['label'].delete_button
-                t.style(delete_button, background='red')
-                cvsignal = t.signals('cv_jobs_done' + str(self.database[0]), reset=True)
-                cvsignal.finished.connect(lambda: t.style(delete_button, background=DARKRED))
+                if 'delete_button' in dir(d[0]['label']):
+                    delete_button = d[0]['label'].delete_button
+                    t.style(delete_button, background='red')
+                    cvsignal = t.signals('cv_jobs_done' + str(self.database[0]), reset=True)
+                    cvsignal.finished.connect(lambda: t.style(delete_button, background=DARKRED))
 
             set7 = UniversalSettingsArea(self,extravar=dict(fortifyed=True))
             t.pos(set7, height=36, above=set6, y_margin=3)
@@ -1270,7 +1271,7 @@ class INFOWidget(ComicWidget):
                 dictionary['center'] = True
                 dictionary['used'] = True
 
-                height = t.config('cover_height')
+                height = t.config('cover_height') or 300
                 thumb = get_thumbnail_from_zip_or_database(database=self.database, height=height)
 
                 return dict(
@@ -1310,7 +1311,7 @@ class INFOWidget(ComicWidget):
             thumb = None
 
             if candidate['database'][0]:
-                height = t.config('cover_height')
+                height = t.config('cover_height') or 300
                 thumb = get_thumbnail_from_zip_or_database(database=candidate['database'], height=height, proxy=False)
             else:
                 rv = comicvine(issue=candidate['database'])

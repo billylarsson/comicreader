@@ -1214,7 +1214,7 @@ class ComicWidget(GOD):
         :return: full_path
         """
         if not coverfile:
-            cover_height = t.config('cover_height')
+            cover_height = t.config('cover_height') or 300
             coverfile = get_thumbnail_from_zip_or_database(
                 database=self.database, index=0, height=cover_height)
         return coverfile
