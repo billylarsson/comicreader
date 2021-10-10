@@ -99,6 +99,7 @@ class CVConnect:
                 rv = False
 
             if rv and len(rv) == 1:
+                rv[0].update(dict(single_result=True))
                 return rv[0]
 
             else:
@@ -125,7 +126,7 @@ class CVConnect:
                 retry_count -= 1
 
                 if t.config('dev_mode'):
-                    print("DOWNLOADING FROM COMICVINE!", self.filename, self.url)
+                    print("DOWNLOADING FROM COMICVINE!", self.filename, self.url.replace(t.config('comicvine_key'), 'XXX'))
                 try:
                     self.response = requests.get(self.url, headers=t.header())
 
@@ -308,6 +309,7 @@ def comicvine(
         fields=None,
         force=False,
         update=False,
+        search=False,
         ):
 
     if not t.config('comicvine_key'):
@@ -364,3 +366,15 @@ def comicvine(
 
             update_publisher_volumes(issue_data_or_publisher_id=publisher)
             extra_update()
+
+    elif search:
+        cv = CVConnect()
+        cv.add_to_url(search)
+        for k,v in filters.items():
+            if type(v) != list:
+                v = [v]
+            for value in v:
+                cv.add_filter_to_url(key=k, value=value)
+
+        rv = cv.download(force=force)
+        return rv

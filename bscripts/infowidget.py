@@ -1,3 +1,4 @@
+from bscripts.cv_guess import GUESSComicVineID
 from PyQt5                        import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore                 import QPoint, Qt
 from PyQt5.QtGui                  import QKeySequence, QPixmap
@@ -89,7 +90,7 @@ class INFOWidget(ComicWidget):
         self.close_and_pop_list('relatives')
         self.close_and_pop_list('volumeslabel')
 
-        for i in ['cover']:
+        for i in ['cover', 'read_beginning']:
             if i in dir(self):
                 container = getattr(self, i)
                 container.close()
@@ -1146,6 +1147,8 @@ class INFOWidget(ComicWidget):
             set7.make_this_into_folder_settings(d, toolsheight=30, extend_le_til=set6, labelwidth=80)
             set7.expand_me(set7.blackgrays)
             use_deletebutton_to_signal_when_cv_done(self, d)
+            self.pair_button = set7
+            self.pair_lineedit = d[0]['label'].lineedit
             return set7
 
         expandlater = []
@@ -1154,8 +1157,8 @@ class INFOWidget(ComicWidget):
 
         make_cover_and_cover_details(self)
         set1 = make_type_changer(self)
-        read_beginning, read_from = make_read_buttons(self) # read_from can be None
-        t.pos(set1, below=read_beginning, y_margin=5)
+        self.read_beginning, read_from = make_read_buttons(self) # read_from can be None
+        t.pos(set1, below=self.read_beginning, y_margin=5)
 
         set2 = make_local_path_widget(self)
         set3 = make_convert_from_pdf_button(self)
@@ -1187,6 +1190,7 @@ class INFOWidget(ComicWidget):
         self.small_info_widgets = expandlater
 
         t.start_thread(self.update_comicvine, name='comicvine', threads=1)
+        self.suggest_comic_id()
 
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
         if 'old_position' in dir(self):
@@ -1792,6 +1796,48 @@ class INFOWidget(ComicWidget):
                 relatives=self.relatives,
             ))
 
+    def draw_suggested_comic(self, work):
+        class Candidate(GOD):
+            def __init__(self, *args, **kwargs):
+                super().__init__(type='_irrelevant', *args, **kwargs)
+
+            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                self.pair_lineedit.setText(str(self.comic_id))
+
+        path, comic_id = work['cover'], work['comic_id']
+        pixmap = QPixmap(path).scaledToWidth(self.pair_button.width() - 2, QtCore.Qt.SmoothTransformation)
+        if pixmap.height() > pixmap.width() * 3:
+            pixmap = QPixmap(path).scaled(
+            self.pair_button.width() - 2, self.pair_button.height() * 3, transformMode=QtCore.Qt.SmoothTransformation)
+
+        label = Candidate(self)
+        label.comic_id = comic_id
+        label.pair_lineedit = self.pair_lineedit
+        t.pos(label, size=pixmap, above=self.pair_button, y_margin=5, add=1)
+        label.setFrameShape(QtWidgets.QFrame.Box)
+        label.setLineWidth(1)
+        t.style(label, background='gray', color='gray')
+        label.setPixmap(pixmap)
+
+        title = GLOBALDeactivate(self, type='_cvsuggesttitle')
+        title.setAlignment(QtCore.Qt.AlignVCenter|QtCore.Qt.AlignHCenter)
+        title.setFrameShape(QtWidgets.QFrame.Box)
+        title.setLineWidth(1)
+
+        title = t.pos(title, width=label, height=20, above=label, y_margin=1)
+        t.style(title, color='gray')
+        title.setText('COMICVINE SUGGESTION')
+        t.correct_broken_font_size(title)
+
+    def suggest_comic_id(self):
+        if self.database[DB.comics.comic_id]:
+            return
+
+        signal = t.signals('guess' + str(self.database[0]), reset=True)
+        t.style(self.local_path_widget.delete_button, background='red')
+        signal.startjob.connect(self.draw_suggested_comic)
+        signal.finished.connect(lambda: t.style(self.local_path_widget.delete_button, background=DARKRED))
+        t.start_thread(GUESSComicVineID, worker_arguments=self.database, name='comicvine', threads=1)
 
     def quit(self, signal=True):
         """

@@ -6,7 +6,6 @@ from PyQt5.QtGui             import QPixmap
 from bscripts.database_stuff import DB, sqlite
 from functools               import partial
 from urllib.request          import Request, urlopen
-import urllib
 import hashlib
 import os
 import pathlib
@@ -647,7 +646,7 @@ class ViktorinoxTechClass:
             headers = tech.header()
 
         spamfriendly = 5
-        while not os.path.exists(loc.full_path) and spamfriendly:
+        while not os.path.exists(loc.full_path) and spamfriendly > 0:
             spamfriendly -= 1
 
             urlobj = Request(url, headers=headers)
@@ -655,9 +654,9 @@ class ViktorinoxTechClass:
             except:
                 gcontext = ssl.SSLContext()
                 urlobj = Request(url, headers=headers)
+
                 try: webpage = urlopen(urlobj, context=gcontext).read()
-                except:
-                    return False
+                except: continue
 
             with open(loc.full_path, 'wb') as new_file:
                 new_file.write(webpage)
@@ -1528,6 +1527,7 @@ class WorkerSignals(QObject):
     sort_volumes_by_rating = pyqtSignal()
     drawfolder = pyqtSignal(dict)
     drawfile = pyqtSignal(dict)
+
 
 class Worker(QRunnable):
     def __init__(self, function):
