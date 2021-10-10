@@ -15,20 +15,23 @@ import os
 import platform
 import time
 
-# from bscripts.cv_guess import GUESSComicVineID
-# data = sqlite.execute('select * from comics where comic_id is null and type is 1', all=True)
-# import random, sys
-# random.shuffle(data)
-# if data[0][0]:
-#     # for i in data:
-#     #     GUESSComicVineID(i)
-#     GUESSComicVineID(data[0])
-#     # GUESSComicVineID(data[1])
-#     # GUESSComicVineID(data[2])
-#     # GUESSComicVineID(data[3])
-#     # GUESSComicVineID(data[4])
-#     sys.exit()
-
+# def run_this():
+#     from bscripts.cv_guess import GUESSComicVineID
+#     data = sqlite.execute('select * from comics where comic_id is null and type is 1', all=True)
+#     import random, sys
+#     random.shuffle(data)
+#     if data[0][0]:
+#         # for i in data:
+#         #     GUESSComicVineID(i)
+#         GUESSComicVineID(data[0])
+#         # GUESSComicVineID(data[1])
+#         # GUESSComicVineID(data[2])
+#         # GUESSComicVineID(data[3])
+#         # GUESSComicVineID(data[4])
+#         sys.exit()
+#
+# if 1 == 2:
+#     run_this()
 
 class LSComicreaderMain(QtWidgets.QMainWindow):
     def __init__(self, primary_screen):

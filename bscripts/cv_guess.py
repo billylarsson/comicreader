@@ -116,13 +116,11 @@ class GUESSComicVineID:
         self.fname = self.fname.replace(string, "")
 
     def guess_my_id(self):
-        #self.fname = 'Parasomnia 004 (2021) (digital) (Son of Ultron-Empire)'
         self.year = self.extract_year()
         cv_year = self.generate_cv_year()
         self.issuenumber = self.extract_issue_number()
         self.volumename = self.extract_volume_name()
 
-        print('\nfilename:', self.loc.naked_filename, '\nyear:', self.year, '\nissuenumber:', self.issuenumber, '\nvolumename:',self.volumename)
         signal = t.signals('guess' + str(self.database[0]))
         if not self.issuenumber or not self.volumename:
             signal.finished.emit()
@@ -132,7 +130,6 @@ class GUESSComicVineID:
 
         filters.update(dict(issue_number=self.issuenumber))
         filters.update(dict(name=self.volumename.split(' ')))
-
         if cv_year:
             filters.update(dict(cover_year=cv_year))
 
@@ -141,52 +138,63 @@ class GUESSComicVineID:
         if not vol_rv:
             signal.finished.emit()
             return
+        
+        if len(vol_rv) >= 100:
+            for offset in [100,200,300,400,500]:
+                add_vol = comicvine(search='volumes', filters=filters, offset=offset)
+                if add_vol:
+                    vol_rv += add_vol
+                if not add_vol or len(add_vol) != 100:
+                    break
+
 
         if 'single_result' in vol_rv:
             vol_rv = [vol_rv]
 
-        for c in range(len(vol_rv)-1,-1,-1):
-            if vol_rv[c]['count_of_issues'] < self.issuenumber:
-                vol_rv.pop(c)
+        vol_rv = [str(x['id']) for x in vol_rv if x['count_of_issues'] >= self.issuenumber]
 
         if not vol_rv:
             signal.finished.emit()
             return
 
-        for volumes in vol_rv:
-            volume_id = volumes['id']
-            free_rv = comicvine(volume=volume_id)
-            if not free_rv:
+        filters = {}
+
+        filters.update(dict(issue_number=self.issuenumber))
+        filters.update(dict(volume='|'.join(vol_rv)))
+        if cv_year:
+            filters.update(dict(cover_date=cv_year))
+
+        free_rv = comicvine(search='issues', filters=filters, sort_by='cover_date')
+
+        if not free_rv:
+            signal.finished.emit()
+            return
+
+        if 'single_result' in free_rv:
+            free_rv = [free_rv]
+
+        for count, i in enumerate(free_rv):
+
+            comic_id = i['id']
+            com_rv = comicvine(issue=comic_id)
+            if not com_rv:
                 signal.finished.emit()
                 return
 
-            for i in free_rv['issues']:
-                if not str(self.issuenumber) == i['issue_number']:
-                    continue
-
-                comic_id = i['id']
-                com_rv = comicvine(issue=comic_id)
-                if not com_rv:
-                    signal.finished.emit()
-                    return
-
-                _tmp = sqlite.execute('select * from comics where comic_id = (?)', values=comic_id)
-                if _tmp:
-                    continue
-
-                cover = t.download_file(com_rv['image']['small_url'])
-                signal.startjob.emit(dict(cover=cover, comic_id=comic_id))
-                signal.finished.emit()
+            if count > 10:
                 return
+
+            if self.year:
+                if com_rv['cover_date'] and com_rv['cover_date'][0:4] != str(self.year):
+                    continue
+
+            _tmp = sqlite.execute('select * from comics where comic_id = (?)', values=comic_id)
+            if _tmp:
+                continue
+
+            cover = t.download_file(com_rv['image']['small_url'])
+            signal.startjob.emit(dict(cover=cover, comic_id=comic_id))
+            signal.finished.emit()
+            return
 
         signal.finished.emit()
-
-
-
-
-
-"""
- api/issues?api_key=XXX&filter=issue_number:8,cover_date:2021-1-1|2022-1-1,volume:133597|82422|80357&sort=id:desc&format=json
- api/volumes?api_key=XXX&filter=name:mirka,name:andolfo,name:sweet,name:paprika&sort=id:desc&format=json
-"""
-

@@ -6,6 +6,15 @@ import os
 import requests
 import time
 
+class SORTER:
+    def __init__(self):
+        self.set_default()
+    def set_default(self):
+        self.sort_mode = 'start_year'
+        self.asc_desc = 'desc'
+        self.offset = None
+
+sortclass = SORTER()
 
 class CVConnect:
     def __init__(self):
@@ -58,7 +67,9 @@ class CVConnect:
 
                 self.url += key + ':' + value
 
-        self.url += '&sort=id:desc&format=json'
+        self.url += '&sort=' + sortclass.sort_mode + ':' + sortclass.asc_desc + '&format=json'
+        if sortclass.offset:
+            self.url += '&offset=' + str(sortclass.offset)
 
     def generate_filename(self, reuse=True, days=7, delete=False):
         if not self.filename:
@@ -310,10 +321,22 @@ def comicvine(
         force=False,
         update=False,
         search=False,
+        sort_by=False,
+        offset=False,
         ):
 
     if not t.config('comicvine_key'):
         return False
+
+    if not sort_by:
+        sortclass.set_default()
+    else:
+        sortclass.sort_mode = sort_by
+
+    if not offset:
+        sortclass.offset = None
+    else:
+        sortclass.offset = offset
 
     if issue:
         if type(issue) != int:
