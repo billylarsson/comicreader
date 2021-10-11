@@ -306,7 +306,7 @@ def check_for_pdf_assistance(pdf_file, index=0, pagecount=False, dry_run=False, 
     :return: list with single jpeg file
     """
     loc = t.separate_file_from_folder(pdf_file)
-    if not loc or not loc.ext.lower() == 'pdf':
+    if not loc or loc.ext.lower() != 'pdf':
         return False
 
     def get_poppler_path():

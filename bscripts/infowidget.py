@@ -1095,6 +1095,8 @@ class INFOWidget(ComicWidget):
                     self.database = sqlite.refresh_db_input('comics', self.database)
                     self.manage_delete_button(delete=True)
                     self.manage_save_button(create=True)
+                    self.save_button.setToolTip(
+                        'right clicking will avoid re-initing neighbours (faster exerience, less facts)')
                     self.save_button.mousePressEvent = self.save_button_mousePressEvent
 
                 def save_button_mousePressEvent(self, *args, **kwargs):
@@ -1106,7 +1108,10 @@ class INFOWidget(ComicWidget):
                         t.correct_broken_font_size(self.textlabel)
                         self.database = sqlite.refresh_db_input('comics', self.database)
                         self.manage_save_button(delete=True)
-                        self.re_init(self.database)
+                        if args[0].button() == 2: # hack that doesnt re_init
+                            return
+                        else:
+                            self.re_init(self.database)
 
                 def create_deletebutton(self):
                     self.manage_delete_button(create=True, text="", tooltip='Clear comicvine ID')
@@ -1796,46 +1801,167 @@ class INFOWidget(ComicWidget):
                 relatives=self.relatives,
             ))
 
-    def draw_suggested_comic(self, work):
+    def draw_suggested_comic(self, candidates):
         class Candidate(GOD):
             def __init__(self, *args, **kwargs):
                 super().__init__(type='_irrelevant', *args, **kwargs)
+                self.activation_toggle(force=False, save=False)
+                self.labels = []
+
+            def next_candidate_button(self, fn, candidatelist):
+                class NEXTCANDIATE(GOD):
+                    def __init__(self, place, *args, **kwargs):
+                        super().__init__(place=place, *args, **kwargs)
+                        t.pos(self, inside=place, margin=1)
+                        t.style(self, background='transparent')
+                    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                        self.draw_suggested_comic(self.candidates)
+
+                self.title.setText('CLICK ME')
+                self.next = NEXTCANDIATE(self.title, type='_nextcandidatebtn',
+                                         extravar=dict(
+                                            draw_suggested_comic=fn,
+                                            candidates=candidatelist,
+                ))
+
+            def show_diffdata(self, work):
+
+                rgb = work['rgb']
+                grayscale = work['grayscale']
+
+                cycle = [
+                    dict(text='TOTAL', value=(rgb.total + grayscale.total) / 2),
+                    dict(text='SIZE', value=rgb.file_size),
+                    dict(text='COLORS', value=rgb.colors),
+                    dict(text='ENTROPY', value=rgb.entropy),
+                    dict(text='GRAY(S)', value=grayscale.total),
+                    dict(text='BLACK', value=grayscale.black),
+                    dict(text='BLUE', value=rgb.blue),
+                    dict(text='GREEN', value=rgb.green),
+                    dict(text='RED', value=rgb.red),
+                    dict(text='MATCH RATE', value=0),
+                ]
+
+                def position_header(self, label):
+                    label.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
+                    t.pos(label,
+                          coat=self.labels[-1], height=self.labels[-1], add=8, above=self.labels[-1], y_margin=1)
+                    t.style(
+                        label, background='rgba(10,10,10,220)', color='rgb(190,190,210)', font=self.labels[-1].font + 1)
+
+                for count, i in enumerate(cycle):
+                    text = i['text']
+                    value = int(i['value'] * 100)
+
+                    if not count:
+                        w = self.width() * 0.5 - 6
+                        h = self.height() * 0.05
+                        if h < 14:
+                            h = 14
+
+                        x = self.height() - h - 2
+                        label = t.pos(new=self, width=w, height=h, move=[3, x])
+                    else:
+                        label = t.pos(new=self, coat=self.labels[-1], above=self.labels[-1], y_margin=1)
+
+                    label.setFrameShape(QtWidgets.QFrame.Box)
+                    label.setLineWidth(1)
+                    label.setText(text)
+                    label.font = t.correct_broken_font_size(label)
+
+                    rlabel = t.pos(new=label, inside=label, width=label, sub=3)
+                    rlabel.setAlignment(QtCore.Qt.AlignRight)
+                    rlabel.setText(str(value) + '%')
+                    t.style(label, background='rgba(20,20,20,210)', color='rgb(180,180,190)')
+                    t.style(rlabel, background='transparent', color='gray', font=label.font)
+
+                    if count+1 == len(cycle):
+                        rlabel.close()
+                        position_header(self, label)
+                        self.title = label
+
+                    self.labels.append(label)
 
             def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-                self.pair_lineedit.setText(str(self.comic_id))
+                self.activation_toggle(save=False)
+                if self.activated:
+                    self.pair_lineedit.setText(str(self.comic_id))
+                    for i in self.labels:
+                        i.hide()
+                else:
+                    self.pair_lineedit.setText("")
+                    for i in self.labels:
+                        i.show()
 
-        path, comic_id = work['cover'], work['comic_id']
-        pixmap = QPixmap(path).scaledToWidth(self.pair_button.width() - 2, QtCore.Qt.SmoothTransformation)
-        if pixmap.height() > pixmap.width() * 3:
-            pixmap = QPixmap(path).scaled(
-            self.pair_button.width() - 2, self.pair_button.height() * 3, transformMode=QtCore.Qt.SmoothTransformation)
+        lower = t.config('comicvine_lower_threshold')
+        if lower and not [x for x in candidates if x['total'] * 100 >= lower]:
+            return
 
-        label = Candidate(self)
-        label.comic_id = comic_id
-        label.pair_lineedit = self.pair_lineedit
-        t.pos(label, size=pixmap, above=self.pair_button, y_margin=5, add=1)
-        label.setFrameShape(QtWidgets.QFrame.Box)
-        label.setLineWidth(1)
-        t.style(label, background='gray', color='gray')
-        label.setPixmap(pixmap)
+        if not [x for x in candidates if not x['used']]:
+            for work in candidates:
+                work['used'] = False
 
-        title = GLOBALDeactivate(self, type='_cvsuggesttitle')
-        title.setAlignment(QtCore.Qt.AlignVCenter|QtCore.Qt.AlignHCenter)
-        title.setFrameShape(QtWidgets.QFrame.Box)
-        title.setLineWidth(1)
+        for work in candidates:
+            if work['used']:
+                continue
 
-        title = t.pos(title, width=label, height=20, above=label, y_margin=1)
-        t.style(title, color='gray')
-        title.setText('COMICVINE SUGGESTION')
-        t.correct_broken_font_size(title)
+            if lower and work in [x for x in candidates if x['total'] * 100 < lower]:
+                continue
+
+            work['used'] = True
+
+            for i in ['suggested_candidate_title', 'suggested_candidate']:
+                if i in dir(self):
+                    getattr(self, i).close()
+
+            path, comic_id = work['cover'], work['comic_id']
+            pixmap = QPixmap(path).scaledToWidth(self.pair_button.width() - 2, QtCore.Qt.SmoothTransformation)
+            if pixmap.height() > pixmap.width() * 3:
+                pixmap = QPixmap(path).scaled(
+                self.pair_button.width() - 2, self.pair_button.height() * 3, transformMode=QtCore.Qt.SmoothTransformation)
+
+            label = Candidate(self)
+            label.comic_id = comic_id
+            label.pair_lineedit = self.pair_lineedit
+            t.pos(label, size=pixmap, above=self.pair_button, y_margin=5, add=1)
+            label.setFrameShape(QtWidgets.QFrame.Box)
+            label.setLineWidth(1)
+            t.style(label, background='gray', color='gray')
+            label.setPixmap(pixmap)
+
+            title = GLOBALDeactivate(self, type='_cvsuggesttitle')
+            title.setAlignment(QtCore.Qt.AlignVCenter|QtCore.Qt.AlignHCenter)
+            title.setFrameShape(QtWidgets.QFrame.Box)
+            title.setLineWidth(1)
+
+            title = t.pos(title, width=label, height=20, above=label, y_margin=1)
+            t.style(title, color='gray')
+            title.setText('COMICVINE SUGGESTION')
+            t.correct_broken_font_size(title)
+
+            label.show_diffdata(work)
+            label.candidates = candidates
+
+            self.suggested_candidate = label
+            self.suggested_candidate_title = title
+
+            if len(candidates) > 1:
+                if lower and len([x for x in candidates if x['total'] * 100 >= lower]) < 2:
+                    break
+
+                label.next_candidate_button(self.draw_suggested_comic, candidates)
+            break
 
     def suggest_comic_id(self):
         if self.database[DB.comics.comic_id]:
             return
 
+        if not t.config('comicvine_suggestion'):
+            return
+
         signal = t.signals('guess' + str(self.database[0]), reset=True)
         t.style(self.local_path_widget.delete_button, background='red')
-        signal.startjob.connect(self.draw_suggested_comic)
+        signal.candidates.connect(self.draw_suggested_comic)
         signal.finished.connect(lambda: t.style(self.local_path_widget.delete_button, background=DARKRED))
         t.start_thread(GUESSComicVineID, worker_arguments=self.database, name='comicvine', threads=1)
 

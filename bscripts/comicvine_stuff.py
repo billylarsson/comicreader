@@ -400,4 +400,8 @@ def comicvine(
                 cv.add_filter_to_url(key=k, value=value)
 
         rv = cv.download(force=force)
+
+        if rv and 'single_result' in rv:
+            rv = [rv]
+
         return rv

@@ -48,6 +48,9 @@ default_dict = dict(
         comictagger_file=dict(active=True, value=None),
         autoupdate_library=dict(active=True, value=None),
 
+        comicvine_suggestion=dict(active=True, value=None),
+        comicvine_lower_threshold=dict(active=True, value=60),
+
         show_reading_progress=dict(active=True, value=None),
         show_page_and_size=dict(active=True, value=None),
         show_ratings=dict(active=True, value=None),
@@ -616,6 +619,20 @@ class ViktorinoxTechClass:
         return header
 
     @staticmethod
+    def digit_prolonger(numeric_value, digits=2):
+        if numeric_value == None:
+            return 'N/A'
+
+        numeric_value = float(numeric_value)
+        numeric_value += 0.00
+
+        if numeric_value >= 100:
+            digits = 0
+
+        numeric_value = str(f"%.{digits}f" % numeric_value)
+        return numeric_value
+
+    @staticmethod
     def download_file(url, file=None, reuse=True, header=None):
         """
         downloads a file, if file already exists, its is NOT redownloaded
@@ -793,6 +810,7 @@ class ViktorinoxTechClass:
             delete=False,
             new=False,
             extension=None,
+            tmp_folder=None,
             part1=None, part2=None
         ):
         """
@@ -804,7 +822,8 @@ class ViktorinoxTechClass:
         :param if extension, its added AFTER hashing
         :return: full path (string)
         """
-        tmp_folder = tech.tmp_folder(folder_of_interest='tmp_files', reuse=True)
+        if not tmp_folder:
+            tmp_folder = tech.tmp_folder(folder_of_interest='tmp_files', reuse=True)
 
         if part1 and part2:
             if file_of_interest:
@@ -813,7 +832,7 @@ class ViktorinoxTechClass:
                 file_of_interest = part1 + part2
 
         if not file_of_interest:
-            md5 = tech.md5_hash_string(str(time.time()) + os.environ['PROGRAM_NAME'] + 'tmp_file')
+            md5 = tech.md5_hash_string() # uuid + random + hash
             file_of_interest = md5.upper()
 
         if hash:
@@ -897,7 +916,7 @@ class ViktorinoxTechClass:
         :return: full path (string)
         """
         if not folder_of_interest:
-            md5 = tech.md5_hash_string(str(time.time()) + os.environ['PROGRAM_NAME'] + 'tmp_folder')
+            md5 = tech.md5_hash_string() # uuid + random + hash
             folder_of_interest = md5.upper()
 
         elif folder_of_interest and hash:
@@ -1118,6 +1137,7 @@ class ViktorinoxTechClass:
                             print(f'The {self.lives_left} limit reached, current count: {self.counter}')
                         elif report:
                             print(f'Current count {self.counter} (limit: {self.lives_left})')
+                    return self.counter
                 def start(self):
                     self.start_time = time.time()
                 def stop(self):
@@ -1351,6 +1371,9 @@ class ViktorinoxTechClass:
         :param name: string
         :return: bool or string.styleSheet()
         """
+        if font: # lazy fix
+            if type(font) == int or font.lower().find('pt') == -1:
+                font = str(font) + 'pt'
 
         def make_stylesheet(widget):
 
@@ -1527,6 +1550,7 @@ class WorkerSignals(QObject):
     sort_volumes_by_rating = pyqtSignal()
     drawfolder = pyqtSignal(dict)
     drawfile = pyqtSignal(dict)
+    candidates = pyqtSignal(list)
 
 
 class Worker(QRunnable):

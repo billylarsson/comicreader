@@ -1404,9 +1404,36 @@ class TOOLComicvine(POPUPTool):
                 )
             )
         ]
+        d2 = [
+            dict(
+                text='SUGGEST COMICVINE ID',
+                tooltip='tries the filename and first page color data against comicvine servers',
+                textsize=TEXTSIZE,
+                kwargs=dict(
+                    type='comicvine_suggestion'
+                )),
+        ]
+
+        d3 = [
+            dict(
+                text='LOWER THRESHOLD',
+                tooltip='lowest matchrate percentage to make such suggestion',
+                textsize=TEXTSIZE,
+                max_value=100,
+                min_value=1,
+                kwargs=dict(
+                    type='comicvine_lower_threshold'
+                )),
+        ]
+
         header = self.blackgray.make_header(title='COMICVINE')
         set1 = self.blackgray.make_this_into_folder_settings(d1)
+        set2 = self.blackgray.make_this_into_checkable_buttons(d2, canvaswidth=330)
+        set3 = self.blackgray.make_this_into_LCDrow(d3, canvaswidth=330)
+        t.style(d3[0]['label'], tooltip=True, background='black', color='white')
         t.pos(set1, below=header, y_margin=3)
+        t.pos(set2, below=set1, y_margin=5)
+        t.pos(set3, below=set2, y_margin=5)
         t.pos(self.blackgray, under=self, move=[10,10])
         self.blackgray.expand_me([x for x in self.blackgray.blackgrays])
 

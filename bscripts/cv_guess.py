@@ -1,3 +1,5 @@
+from bscripts.file_handling import unzipper
+from bscripts.compare_images import ImageComparer
 from bscripts.database_stuff import DB, sqlite
 from bscripts.tricks import tech as t
 from bscripts.comicvine_stuff import comicvine
@@ -13,6 +15,7 @@ class GUESSComicVineID:
         self.loc = t.separate_file_from_folder(database[DB.comics.local_path])
         self.fname = self.loc.naked_filename
         self.database = database
+        self.signal = t.signals('guess' + str(self.database[0]))
         if autoinit:
             self.guess_my_id()
 
@@ -117,28 +120,28 @@ class GUESSComicVineID:
 
     def guess_my_id(self):
         self.year = self.extract_year()
-        cv_year = self.generate_cv_year()
         self.issuenumber = self.extract_issue_number()
         self.volumename = self.extract_volume_name()
 
-        signal = t.signals('guess' + str(self.database[0]))
-        if not self.issuenumber or not self.volumename:
-            signal.finished.emit()
-            return
+        if not self.volumename:
+            self.signal.finished.emit()
+            return False
 
+        #elif self.issuenumber and self.volumename and self.year:
+        else:
+            if not self.search_comicvine():
+                self.signal.finished.emit()
+
+    def standard_volumes_search(self):
         filters = {}
 
-        filters.update(dict(issue_number=self.issuenumber))
-        filters.update(dict(name=self.volumename.split(' ')))
-        if cv_year:
-            filters.update(dict(cover_year=cv_year))
+        filters.update(dict(name=self.volumename.strip().split(' ')))
 
         vol_rv = comicvine(search='volumes', filters=filters)
 
         if not vol_rv:
-            signal.finished.emit()
-            return
-        
+            return False
+
         if len(vol_rv) >= 100:
             for offset in [100,200,300,400,500]:
                 add_vol = comicvine(search='volumes', filters=filters, offset=offset)
@@ -147,54 +150,70 @@ class GUESSComicVineID:
                 if not add_vol or len(add_vol) != 100:
                     break
 
+        if self.issuenumber:
+            vol_rv = [str(x['id']) for x in vol_rv if x['count_of_issues'] >= self.issuenumber]
+        else:
+            vol_rv = [str(x['id']) for x in vol_rv]
 
-        if 'single_result' in vol_rv:
-            vol_rv = [vol_rv]
+        return vol_rv
 
-        vol_rv = [str(x['id']) for x in vol_rv if x['count_of_issues'] >= self.issuenumber]
+    def fetch_best_candidate(self, candidates):
+        org_image = unzipper(database=self.database, index=0)
 
+        lap = []
+        for i in candidates:
+            rgb = ImageComparer(org_image, i['cover'])
+            gray = ImageComparer(org_image, i['cover'], grayscale=True)
+            quicktotal = (rgb.total + gray.total) / 2
+            lap.append(
+                (quicktotal, dict(
+                used=False, cover=i['cover'], comic_id=i['comic_id'], rgb=rgb, grayscale=gray, total=quicktotal),))
+
+        lap.sort(key=lambda x:x[0], reverse=True)
+        return [x[1] for x in lap]
+
+    def search_comicvine(self):
+        vol_rv = self.standard_volumes_search()
         if not vol_rv:
-            signal.finished.emit()
-            return
+            return False
 
         filters = {}
 
-        filters.update(dict(issue_number=self.issuenumber))
         filters.update(dict(volume='|'.join(vol_rv)))
-        if cv_year:
+
+        if self.year:
+            cv_year = self.generate_cv_year()
             filters.update(dict(cover_date=cv_year))
+
+        if self.issuenumber:
+            filters.update(dict(issue_number=self.issuenumber))
 
         free_rv = comicvine(search='issues', filters=filters, sort_by='cover_date')
 
         if not free_rv:
-            signal.finished.emit()
-            return
+            return False
 
-        if 'single_result' in free_rv:
-            free_rv = [free_rv]
-
-        for count, i in enumerate(free_rv):
+        spamtracker = t.keep_track(name='cv_guesser', restart=True)
+        candidates = []
+        for i in free_rv:
 
             comic_id = i['id']
-            com_rv = comicvine(issue=comic_id)
-            if not com_rv:
-                signal.finished.emit()
-                return
-
-            if count > 10:
-                return
-
-            if self.year:
-                if com_rv['cover_date'] and com_rv['cover_date'][0:4] != str(self.year):
-                    continue
-
-            _tmp = sqlite.execute('select * from comics where comic_id = (?)', values=comic_id)
-            if _tmp:
+            if sqlite.execute('select * from comics where comic_id = (?)', values=comic_id):
                 continue
 
-            cover = t.download_file(com_rv['image']['small_url'])
-            signal.startjob.emit(dict(cover=cover, comic_id=comic_id))
-            signal.finished.emit()
-            return
+            if self.year:
+                if i['cover_date'] and str(i['cover_date'][0:4]) != str(self.year):
+                    continue
 
-        signal.finished.emit()
+            cover = t.download_file(i['image']['small_url'])
+            candidates.append(dict(cover=cover, comic_id=comic_id))
+
+            if spamtracker.count() >= 10:
+                break
+
+        if candidates:
+            winners = self.fetch_best_candidate(candidates=candidates)
+            self.signal.candidates.emit(winners)
+
+        self.signal.finished.emit()
+        return False
