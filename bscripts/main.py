@@ -9,12 +9,11 @@ from bscripts.settings_area  import TOOLSettings
 from bscripts.tricks         import tech as t
 from bscripts.widgets        import TOOLBatch, TOOLComicvine, TOOLFolders
 from bscripts.widgets        import TOOLMaxiMini, TOOLPublisher, TOOLQuit
-from bscripts.widgets        import TOOLRank, TOOLReading, TOOLSearch, TOOLSort
+from bscripts.widgets        import TOOLRank, TOOLReading, TOOLSearch, TOOLSort,TOOLCVIDnoID
 from bscripts.widgets        import TOOLWEBP
 import os
 import platform
 import time
-
 
 class LSComicreaderMain(QtWidgets.QMainWindow):
     def __init__(self, primary_screen):
@@ -140,6 +139,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         """
         dlist = [
             dict(config='tool_searcher', widget=TOOLSearch, text='SEARCH'),
+            dict(config='tool_cvidnoid', widget=TOOLCVIDnoID, text='XX XX XX', post_init=True),
             dict(config='tool_settings', widget=TOOLSettings, text='CONFIG'),
             dict(config='tool_sorter', widget=TOOLSort, text='SORT'),
             dict(config='tool_folderbrowse', widget=TOOLFolders, text='BROWSE', tooltip="browse all files and folders you've added in settings"),
@@ -166,9 +166,6 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             widget = d['widget']
             label = widget(self, type=conf)
             size_to_text(label, d['text'])
-            if 'tooltip' in d:
-                label.setToolTip(d['tooltip'])
-
             d.update(dict(label=label))
 
             if count == 0:
@@ -180,8 +177,10 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                 else:
                     t.pos(label, after=prelabel, x_margin=1)
 
-
-
+            if 'tooltip' in d:
+                label.setToolTip(d['tooltip'])
+            if 'post_init' in d:
+                label.post_init()
 
         if platform.system() != 'Windows' or t.config('dev_mode'):
             self.quitter = TOOLQuit(self, type='quit_button')
@@ -223,8 +222,14 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         includes the comics of your search query and NSFW/PDF settings
         :return: list
         """
+        if t.config('show_paired'):
+            query = 'select * from comics where comic_id is not null'
+        elif t.config('show_unpaired'):
+            query = 'select * from comics where comic_id is null'
+        else:
+            query = 'select * from comics'
         text = self.le_primary_search.text().strip()
-        comics = sqlite.execute('select * from comics', all=True)
+        comics = sqlite.execute(query, all=True)
 
         if not comics and t.config('autoupdate_library'):
             scan_for_new_comics()

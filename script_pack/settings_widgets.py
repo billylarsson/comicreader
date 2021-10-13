@@ -103,7 +103,6 @@ class GOD(QtWidgets.QLabel):
             self.highlighted = force
 
         elif toggle:
-
             if self.highlighted:
                 self.highlighted = False
             else:
@@ -145,7 +144,6 @@ class CheckableWidget(GOD):
             dict(object=self.textlabel, color='white'),
             dict(object=self.button, background=BTN_SHINE_GREEN, color=BTN_SHINE_GREEN),
         ]
-
         self.directives['deactivation'] = [
             dict(object=self.textlabel, color=BTN_SHADE),
             dict(object=self.button, background=BTN_SHADE, color=BTN_SHADE),
@@ -475,7 +473,6 @@ class CheckBoxSignalGroup(CheckableWidget):
         everyone gets the signal, if i'm on and not the signal i turn off and vice versa
         :param signal: string
         """
-
         if self.activated and self.type != signal:
             self.activation_toggle(force=False)
 
@@ -637,7 +634,10 @@ class LCD(QtWidgets.QLCDNumber):
             total += change
 
         else:
-            total = direct_value
+            if type(direct_value) != int:
+                total = 0
+            else:
+                total = direct_value
 
         if total > self.parent.max_value:
             total = self.parent.max_value
@@ -724,7 +724,7 @@ class CountLabel(GOD):
             return total_value
 
         if not total_value and 'type' in dir(lcd_widget): # gets total value if not provided
-            total_value = t.config(lcd_widget.type) or 0
+            total_value = t.config(lcd_widget.type, curious=True) or 0
 
         total_value = total_value_checker(total_value) or 0
 
@@ -803,8 +803,22 @@ class CountLabel(GOD):
         for lcd in list_with_all_lcds:
             lcd.all_lcd = list_with_all_lcds
 
-class CheckableLCD(CountLabel, CheckableWidget):
-    pass
+class CheckableLCD(CountLabel, CheckableAndGlobalHighlight):
+    def post_init(self):
+        if 'button' not in dir(self) or 'title_label' not in dir(self):
+            return
+
+        self.button.setMouseTracking(True)
+        self.title_label.setMouseTracking(True)
+
+        self.directives['activation'] = [
+            dict(object=self.title_label, color='white'),
+            dict(object=self.button, background='lightGreen', color='lightGreen'),
+        ]
+        self.directives['deactivation'] = [
+            dict(object=self.title_label, color='gray'),
+            dict(object=self.button, background='gray', color='gray'),
+        ]
 
 class LCDRow(CountLabel):
     def __init__(self, place, lcds_in_this_row=3, type=None, clickable=True, autosave=True, height=None, background='black', color='white'):
@@ -1419,6 +1433,7 @@ class UniversalSettingsArea(GOD):
             dictionary.update(dict(label=label, lcd=lcds[0]))
             settingscanvas.widgets.append(dictionary)
             self.delayed_init(dictionary)
+            t.style(label, tooltip=True, background='black', color='white') # not sure why needed, lazy
 
         return settingscanvas
 
@@ -1426,25 +1441,19 @@ class UniversalSettingsArea(GOD):
         """
         this highjacks fn: make_this_into_LCDrow and then makes the clickable
         button upon that label and moves the title_label so they all fit nicley
-        to separate button_type from LCD_type we add _lcd to LCD_type
         :return: settingscanvas made via fn:make_this_into_LCDrow
         """
-        for dictionary in headersdictionary:
-            dictionary['kwargs']['type'] += '_lcd' # adds _lcd to self.type
-
         settingscanvas = self.make_this_into_LCDrow(headersdictionary, toolsheight, canvaswidth)
-
         for dictionary in headersdictionary:
-            # for excplicity reasons dictionary changes back to previous type
-            dictionary['kwargs']['type'] = dictionary['kwargs']['type'][0:-len('_lcd')]
-
             label = dictionary['label']
-            label.type = dictionary['kwargs']['type'] # changes "back" into correct type before init
             label.draw_checkable_widget(dictionary)
+            label.button = dictionary['button']
             dictionary['textlabel'].close() # figure its easier to kill extra label than rewrite the fn
             dictionary.pop('textlabel') # excplicitly removes the textlabel from dictionary, not needed
             label.extend_title_to_reach_lcd() # might not be nessesary, just in case it pops out somewhere
-            t.pos(label.title_label, move=[label.height(),0])
+            t.pos(label.title_label, move=[label.height() + settingscanvas.lineWidth(),0])
+
+        for dictionary in headersdictionary:
             self.delayed_init(dictionary)
 
         return settingscanvas

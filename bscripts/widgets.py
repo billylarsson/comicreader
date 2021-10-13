@@ -5,7 +5,7 @@ from bscripts.comicvine_stuff     import comicvine
 from bscripts.database_stuff      import DB, sqlite
 from bscripts.tricks              import tech as t
 from script_pack.preset_colors    import *
-from script_pack.settings_widgets import CheckableLCD, ExecutableLookCheckable
+from script_pack.settings_widgets import CheckableLCD, ExecutableLookCheckable, CheckableAndGlobalHighlight
 from script_pack.settings_widgets import FolderSettingsAndGLobalHighlight
 from script_pack.settings_widgets import GLOBALDeactivate, GOD
 from script_pack.settings_widgets import HighlightRadioBoxGroup, POPUPTool
@@ -1409,12 +1409,36 @@ class TOOLComicvine(POPUPTool):
                 text='SUGGEST COMICVINE ID',
                 tooltip='tries the filename and first page color data against comicvine servers',
                 textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight,
+                post_init=True,
                 kwargs=dict(
                     type='comicvine_suggestion'
+                )),
+            dict(
+                text='SHOW CANDIDATE DETAILS',
+                tooltip='theres some data based on the suggestions, this data is shown on the cover of the suggestion, some may find this annoying',
+                textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight,
+                post_init=True,
+                kwargs=dict(
+                    type='comicvine_show_suggestion_details'
                 )),
         ]
 
         d3 = [
+            dict(
+                text='AUTOPAIR THRESHOLD',
+                tooltip='if this matchrate is meet the comic is paired directly without notice and interaction',
+                textsize=TEXTSIZE,
+                widget=CheckableLCD,
+                max_value=100,
+                min_value=1,
+                post_init=True,
+                kwargs=dict(
+                    type='comicvine_autopair_threshold',
+                )),
+        ]
+        d4 = [
             dict(
                 text='LOWER THRESHOLD',
                 tooltip='lowest matchrate percentage to make such suggestion',
@@ -1429,11 +1453,14 @@ class TOOLComicvine(POPUPTool):
         header = self.blackgray.make_header(title='COMICVINE')
         set1 = self.blackgray.make_this_into_folder_settings(d1)
         set2 = self.blackgray.make_this_into_checkable_buttons(d2, canvaswidth=330)
-        set3 = self.blackgray.make_this_into_LCDrow(d3, canvaswidth=330)
-        t.style(d3[0]['label'], tooltip=True, background='black', color='white')
+        set3 = self.blackgray.make_this_into_checkable_button_with_LCDrow(d3, canvaswidth=330)
+        set4 = self.blackgray.make_this_into_LCDrow(d4, canvaswidth=330)
+
         t.pos(set1, below=header, y_margin=3)
         t.pos(set2, below=set1, y_margin=5)
         t.pos(set3, below=set2, y_margin=5)
+        t.pos(set4, below=set3, y_margin=5)
+
         t.pos(self.blackgray, under=self, move=[10,10])
         self.blackgray.expand_me([x for x in self.blackgray.blackgrays])
 
@@ -1447,6 +1474,46 @@ class TOOLComicvine(POPUPTool):
         elif 'blackgray' in dir(self):
             self.blackgray.close()
             del self.blackgray
+
+class TOOLCVIDnoID(GOD):
+
+    def __init__(self, place, *args, **kwargs):
+        super().__init__(place)
+        t.style(self, background='transparent', color='transparent')
+
+    def post_init(self):
+        class ShowNotShow(HighlightRadioBoxGroup):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.activation_toggle(save=False)
+
+            def create_button(self):
+                self.button = GOD(self, type=self.type)
+                t.pos(self.button, inside=self, margin=1)
+                self.textlabel = QtWidgets.QLabel(self)
+                self.textlabel.hide()
+
+        w = self.width() / 3 - 2
+        paired = ShowNotShow(self, type='show_paired', signalgroup='pair_no_pair')
+        paired.setToolTip('show ONLY tagged comics')
+        unpaired = ShowNotShow(self, type='show_unpaired', signalgroup='pair_no_pair')
+        unpaired.setToolTip('show ONLY untagged comics')
+        both = ShowNotShow(self, type='show_both', signalgroup='pair_no_pair')
+        both.setToolTip('show both tagged and untagged comics')
+
+        self.labels = []
+
+        for i in [paired, unpaired, both]:
+            if not self.labels:
+                t.pos(i, width=w, height=self, right=self.width())
+            else:
+                t.pos(i, coat=self.labels[-1], before=self.labels[-1], x_margin=1)
+            i.create_button()
+            i.post_init()
+            self.labels.append(i)
+            i.labels = self.labels
+
+        self.labels[-1].fall_back_to_default(self.labels, 'show_both')
 
 class TOOLWEBP(POPUPTool):
     def show_webp_settings(self):
@@ -1476,7 +1543,8 @@ class TOOLWEBP(POPUPTool):
             dict(
                 text='4K DOWNSIZE',
                 textsize=TEXTSIZE,
-
+                widget=CheckableAndGlobalHighlight,
+                post_init=True,
                 kwargs=dict(
                     type='webp_4kdownsize'
             )),
@@ -1484,7 +1552,8 @@ class TOOLWEBP(POPUPTool):
                 text='MAKE MD5 FILE',
                 tooltip='for PDF to CBZ conversions there wont be any individual file sums because those wont offer any usefull data',
                 textsize=TEXTSIZE,
-
+                widget=CheckableAndGlobalHighlight,
+                post_init=True,
                 kwargs=dict(
                     type='webp_md5file'
             )),
@@ -1492,15 +1561,17 @@ class TOOLWEBP(POPUPTool):
                 text='DELETE SPAM',
                 tooltip='be cautious, this will remove what it thinks is spam, not what you think is spam!',
                 textsize=TEXTSIZE,
-
+                widget=CheckableAndGlobalHighlight,
+                post_init=True,
                 kwargs=dict(
                     type='delete_spam'
                 )),
             dict(
                 text='DELETE SOURCE',
                 textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight,
+                post_init=True,
                 tooltip='delete source file once convertion is complete',
-
                 kwargs=dict(
                     type='webp_delete_source_file'
             ))

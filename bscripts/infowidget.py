@@ -1,3 +1,5 @@
+from bscripts.file_handling import unzipper
+from bscripts.compare_images import ImageComparer
 from bscripts.cv_guess import GUESSComicVineID
 from PyQt5                        import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore                 import QPoint, Qt
@@ -271,7 +273,7 @@ class INFOWidget(ComicWidget):
                                 os.remove(self.database[DB.comics.local_path])
 
                             sqlite.execute('delete from comics where id is (?)', self.database[0])
-                            self.parent.parent.close()
+                            self.parent.parent.quit()
 
                 class CANCELBTN(HighlightRadioBoxGroup):
                     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
@@ -1096,7 +1098,7 @@ class INFOWidget(ComicWidget):
                     self.manage_delete_button(delete=True)
                     self.manage_save_button(create=True)
                     self.save_button.setToolTip(
-                        'right clicking will avoid re-initing neighbours (faster exerience, less facts)')
+                        'right clicking will avoid re-initing neighbours (faster exerience while less exerience)')
                     self.save_button.mousePressEvent = self.save_button_mousePressEvent
 
                 def save_button_mousePressEvent(self, *args, **kwargs):
@@ -1108,7 +1110,7 @@ class INFOWidget(ComicWidget):
                         t.correct_broken_font_size(self.textlabel)
                         self.database = sqlite.refresh_db_input('comics', self.database)
                         self.manage_save_button(delete=True)
-                        if args[0].button() == 2: # hack that doesnt re_init
+                        if args and args[0].button() == 2: # hack that doesnt re_init
                             return
                         else:
                             self.re_init(self.database)
@@ -1154,6 +1156,8 @@ class INFOWidget(ComicWidget):
             use_deletebutton_to_signal_when_cv_done(self, d)
             self.pair_button = set7
             self.pair_lineedit = d[0]['label'].lineedit
+            self.pair_textlabel = d[0]['label'].textlabel
+            self.pair_label = d[0]['label']
             return set7
 
         expandlater = []
@@ -1224,7 +1228,7 @@ class INFOWidget(ComicWidget):
             else:
                 t.pos(self.volumeslabel, top=dict(bottom=self), y_margin=3, left=self)
 
-        if 'draw_volumes_button' in dir(self):
+        if 'draw_volumes_button' in dir(self) and self.relatives:
             t.pos(self.draw_volumes_button,
                   width=self.relatives[0],
                   height=20,
@@ -1315,6 +1319,7 @@ class INFOWidget(ComicWidget):
             find_an_unupdated_local_comic_id(self, candidate)
 
             thumb = None
+            rv = None
 
             if candidate['database'][0]:
                 height = t.config('cover_height') or 300
@@ -1330,9 +1335,9 @@ class INFOWidget(ComicWidget):
                 return False
 
             candidate['used'] = True
+
             self.signal.buildrelative.emit(dict(
-                database=candidate['database'], image_path=thumb, center=False, count=candidate['count'])
-            )
+                database=candidate['database'], image_path=thumb, center=False, count=candidate['count'], cv=rv))
             return True
 
         while len([x for x in candidates if x['used']]) < maxrelatives:
@@ -1442,7 +1447,7 @@ class INFOWidget(ComicWidget):
     def create_relative(self, instructions):
 
         class RelativeWidget(GOD):
-            def __init__(self, place, database, image_path, center, parent, count, *args, **kwargs):
+            def __init__(self, place, database, image_path, center, parent, count, cv=None, *args, **kwargs):
                 super().__init__(place=place, *args, **kwargs)
                 self.setFrameStyle(QtWidgets.QFrame.Box | QtWidgets.QFrame.Raised)
                 self.setLineWidth(1)
@@ -1452,6 +1457,7 @@ class INFOWidget(ComicWidget):
                 self.image_path = image_path
                 self.center = center
                 self.count = count
+                self.comicvine_load = cv # if comicvine
 
                 margin = self.lineWidth() + self.midLineWidth() + 1
                 height = int(self.parent.height() * 0.2 - margin * 3)
@@ -1482,7 +1488,96 @@ class INFOWidget(ComicWidget):
                     t.correct_broken_font_size(self.proxy_label)
                     self.setToolTip('DOWNLOADED COVER FROM COMICVINE, COULDNT FIND ISSUE AMONG YOUR FILES')
 
+                    signal_string = 'found_local_cancidate' + str(self.database[DB.comics.comic_id])
+                    self.found_local_candidate_signal = t.signals(signal_string, reset=True)
+                    self.found_local_candidate_signal.db_input.connect(self.found_local_candidate)
+
+                    t.start_thread(self.find_local_candidate)
+
                 self.show()
+
+            def found_local_candidate(self, total_and_db_input):
+                """
+                :param total_and_db_input:
+                        is a tuple were index[0] is total percentage compare from
+                        GUESSComicVineID and index[1] is real local sqlite_db_input
+                """
+                string = 'PROPOSING UPAIRED LOCAL FILE FOR Comicvine ID: ' + str(self.database[DB.comics.comic_id])
+                self.setToolTip(string)
+                t.style(self.shade, background='transparent')
+
+                threshold = t.config('comicvine_autopair_threshold')
+                if threshold != False and total_and_db_input[0] * 100 >= threshold:
+
+                    query1 = 'update comics set comic_id = (?) where id is (?)'
+                    query2 = 'update comics set volume_id = (?) where id is (?)'
+                    query3 = 'update comics set publisher_id = (?) where id is (?)'
+                    sqlite.execute(query1, values=(self.database[DB.comics.comic_id], total_and_db_input[1][0]),)
+                    sqlite.execute(query2, values=(self.database[DB.comics.volume_id], total_and_db_input[1][0]), )
+                    sqlite.execute(query3, values=(self.database[DB.comics.publisher_id], total_and_db_input[1][0]), )
+
+                    self.proxy_label.setText('AUTO-PAIRED')
+                    t.style(self.proxy_label, background=BTN_SHINE_GREEN)
+                else:
+                    self.proxy_label.setText('PROPOSAL')
+                    t.style(self.proxy_label, background=BTN_SHINE)
+
+                self.database = total_and_db_input[1]
+
+            def find_local_candidate(self):
+                if not self.comicvine_load:
+                    return
+
+                issue_number = self.comicvine_load['issue_number']
+                volume_name = self.comicvine_load['volume']['name']
+                cover_date = self.comicvine_load['cover_date']
+
+                if not issue_number or not volume_name or not cover_date:
+                    return
+
+                data = sqlite.execute('select * from comics where comic_id is null and type is 1', all=True)
+                candidates = []
+                for i in data:
+                    cv = GUESSComicVineID(database=i, autoinit=False)
+                    iter_year = cv.extract_year()
+                    if not iter_year:
+                        continue
+
+                    if cover_date[0:4] != str(iter_year):
+                        continue
+
+                    iter_issuenumber = cv.extract_issue_number()
+                    if issue_number != str(iter_issuenumber):
+                        continue
+
+                    iter_volumename = cv.extract_volume_name()
+                    if iter_volumename.lower() != volume_name.lower():
+                        continue
+
+                    candidates.append(i)
+
+                if not candidates:
+                    return
+
+                lap = []
+                for count, candidate in enumerate(candidates):
+                    if count > 10:
+                        break
+
+                    org_image = unzipper(database=candidate, index=0)
+
+                    rgb = ImageComparer(org_image, self.image_path)
+                    gray = ImageComparer(org_image, self.image_path, grayscale=True)
+
+                    quicktotal = (rgb.total + gray.total) / 2
+                    if quicktotal * 100 < t.config('comicvine_lower_threshold'):
+                        continue
+
+                    lap.append((quicktotal, candidate,))
+
+                if lap:
+                    lap.sort(key=lambda x: x[0], reverse=True)
+                    self.found_local_candidate_signal.db_input.emit(lap[0])
 
             def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
                 if ev.button() == 1:
@@ -1817,12 +1912,12 @@ class INFOWidget(ComicWidget):
                     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
                         self.draw_suggested_comic(self.candidates)
 
-                self.title.setText('CLICK ME')
-                self.next = NEXTCANDIATE(self.title, type='_nextcandidatebtn',
+                if 'title' in dir(self):
+                    self.title.setText('CLICK ME')
+                    self.next = NEXTCANDIATE(self.title, type='_nextcandidatebtn',
                                          extravar=dict(
                                             draw_suggested_comic=fn,
-                                            candidates=candidatelist,
-                ))
+                                            candidates=candidatelist))
 
             def show_diffdata(self, work):
 
@@ -1853,7 +1948,10 @@ class INFOWidget(ComicWidget):
                     text = i['text']
                     value = int(i['value'] * 100)
 
-                    if not count:
+                    if not value:
+                        continue
+
+                    if not count or not self.labels:
                         w = self.width() * 0.5 - 6
                         h = self.height() * 0.05
                         if h < 14:
@@ -1939,11 +2037,23 @@ class INFOWidget(ComicWidget):
             title.setText('COMICVINE SUGGESTION')
             t.correct_broken_font_size(title)
 
-            label.show_diffdata(work)
+            if t.config('comicvine_show_suggestion_details'):
+                label.show_diffdata(work)
+
             label.candidates = candidates
 
             self.suggested_candidate = label
             self.suggested_candidate_title = title
+
+            if t.config('comicvine_autopair_threshold'):
+                if t.config('comicvine_autopair_threshold', curious=True) < work['total'] * 100:
+                    self.pair_lineedit.setText(str(comic_id))
+                    self.pair_label.save_button.mousePressEvent()
+                    self.pair_textlabel.setText('AUTO\nPAIRED')
+                    t.correct_broken_font_size(self.pair_textlabel, x_margin=1)
+                    title.setText('READER AUTOMATICALLY PAIRED')
+                    title.setToolTip('you can change this behavior under comicvine settings!')
+                    t.correct_broken_font_size(title, x_margin=1)
 
             if len(candidates) > 1:
                 if lower and len([x for x in candidates if x['total'] * 100 >= lower]) < 2:
@@ -1956,7 +2066,10 @@ class INFOWidget(ComicWidget):
         if self.database[DB.comics.comic_id]:
             return
 
-        if not t.config('comicvine_suggestion'):
+        elif self.database[DB.comics.type] != DB.comics.comic: # not comic as a type
+            return
+
+        elif not t.config('comicvine_suggestion'):
             return
 
         signal = t.signals('guess' + str(self.database[0]), reset=True)

@@ -15,8 +15,8 @@ class GUESSComicVineID:
         self.loc = t.separate_file_from_folder(database[DB.comics.local_path])
         self.fname = self.loc.naked_filename
         self.database = database
-        self.signal = t.signals('guess' + str(self.database[0]))
         if autoinit:
+            self.signal = t.signals('guess' + str(self.database[0]))
             self.guess_my_id()
 
     def extract_year_with_parentesis(self):
@@ -119,15 +119,14 @@ class GUESSComicVineID:
         self.fname = self.fname.replace(string, "")
 
     def guess_my_id(self):
-        self.year = self.extract_year()
-        self.issuenumber = self.extract_issue_number()
-        self.volumename = self.extract_volume_name()
+        self.year = self.extract_year() # int
+        self.issuenumber = self.extract_issue_number() # int
+        self.volumename = self.extract_volume_name() # string
 
         if not self.volumename:
             self.signal.finished.emit()
             return False
 
-        #elif self.issuenumber and self.volumename and self.year:
         else:
             if not self.search_comicvine():
                 self.signal.finished.emit()
@@ -139,11 +138,20 @@ class GUESSComicVineID:
 
         vol_rv = comicvine(search='volumes', filters=filters)
 
+        if not vol_rv: # if no hits and V2 something in name, search once without it
+            name = self.volumename.split(' ')
+            for count, i in enumerate(name):
+                if len(i) == 2 and i[0].lower() == 'v' and i[-1].isdigit():
+                    name.pop(count)
+                    filters = dict(name=name)
+                    vol_rv = comicvine(search='volumes', filters=filters)
+                    break
+
         if not vol_rv:
             return False
 
         if len(vol_rv) >= 100:
-            for offset in [100,200,300,400,500]:
+            for offset in [x * 100 for x in range(1, 10)]:
                 add_vol = comicvine(search='volumes', filters=filters, offset=offset)
                 if add_vol:
                     vol_rv += add_vol

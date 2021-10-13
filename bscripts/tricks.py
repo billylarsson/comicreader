@@ -49,7 +49,9 @@ default_dict = dict(
         autoupdate_library=dict(active=True, value=None),
 
         comicvine_suggestion=dict(active=True, value=None),
+        comicvine_show_suggestion_details=dict(active=True, value=None),
         comicvine_lower_threshold=dict(active=True, value=60),
+        comicvine_autopair_threshold=dict(active=True, value=85),
 
         show_reading_progress=dict(active=True, value=None),
         show_page_and_size=dict(active=True, value=None),
@@ -1551,6 +1553,7 @@ class WorkerSignals(QObject):
     drawfolder = pyqtSignal(dict)
     drawfile = pyqtSignal(dict)
     candidates = pyqtSignal(list)
+    db_input = pyqtSignal(tuple)
 
 
 class Worker(QRunnable):
