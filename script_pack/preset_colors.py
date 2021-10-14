@@ -40,3 +40,6 @@ READ_C_1 = 'black'
 
 READ_B_0 = 'rgb(120,120,120)'
 READ_C_0 = 'rgb(60,60,60)'
+
+# fin temp (sig7/11 bug search)
+# /media/plutonergy/WD1TB One/Comics Download/2021.09.15 Weekly Pack/2021.09.15 INDIE Week/Fight Girls 03 (of 05) (2021) (digital) (Son of Ultron-Empire).cbz

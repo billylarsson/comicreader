@@ -1503,57 +1503,56 @@ class ViktorinoxTechClass:
             while name in self.techdict['signals']:
                 name += 1
 
-        if name not in self.techdict['signals'] and not delete:
-            self.techdict['signals'][name] = WorkerSignals()
-            self.techdict['signals'][name].name = name
+        if name not in self.techdict['signals']:
+            newsignal = WorkerSignals()
+            newsignal.name = name
+            self.techdict['signals'][name] = [newsignal]
 
-        elif name in self.techdict['signals'] and delete:
-            self.techdict['signals'].pop(name)
-            return
+        elif name in self.techdict['signals'] and reset or delete or delete_afterwards:
+            newsignal = WorkerSignals()
+            newsignal.name = name
+            self.techdict['signals'][name].append(newsignal)
+            if delete_afterwards:
+                return self.techdict['signals'][name][-2]
 
-        elif name in self.techdict['signals'] and reset:
-            self.techdict['signals'][name] = WorkerSignals()
-            self.techdict['signals'][name].name = name
-
-        if delete_afterwards:
-            rv = self.techdict['signals'][name]
-            self.techdict['signals'].pop(name)
-            return rv
-
-        return self.techdict['signals'][name]
+        return self.techdict['signals'][name][-1]
 
 tech = ViktorinoxTechClass()
 
 class WorkerSignals(QObject):
-    finished = pyqtSignal()
-    quit = pyqtSignal()
-    error = pyqtSignal(dict)
-    result = pyqtSignal(object)
-    progress = pyqtSignal(dict)
-    checkgroup_master = pyqtSignal(str)
-    deactivate = pyqtSignal(str)
     activate = pyqtSignal(str)
-    stop = pyqtSignal(dict)
-    file_delivery = pyqtSignal(str)
     activated = pyqtSignal(bool)
-    neighbour = pyqtSignal(dict)
-    pagenumbers = pyqtSignal(tuple)
-    startjob = pyqtSignal(dict)
-    volumelabel = pyqtSignal(dict)
     buildrelative = pyqtSignal(dict)
-    pickrelatives = pyqtSignal(list)
+    candidates = pyqtSignal(list)
+    checkgroup_master = pyqtSignal(str)
+    db_input = pyqtSignal(tuple)
+    deactivate = pyqtSignal(str)
+    drawfile = pyqtSignal(dict)
+    drawfolder = pyqtSignal(dict)
     drawpublisher = pyqtSignal(int)
     drawvolume = pyqtSignal(dict)
-    sort_publishers_by_name = pyqtSignal()
+    error = pyqtSignal(dict)
+    file_delivery = pyqtSignal(str)
+    finished = pyqtSignal()
+    neighbour = pyqtSignal(dict)
+    pagenumbers = pyqtSignal(tuple)
+    pickrelatives = pyqtSignal(list)
+    progress = pyqtSignal(dict)
+    quit = pyqtSignal()
+    result = pyqtSignal(object)
     sort_publishers_by_amount = pyqtSignal()
+    sort_publishers_by_name = pyqtSignal()
     sort_publishers_by_rating = pyqtSignal()
-    sort_volumes_by_name = pyqtSignal()
     sort_volumes_by_amount = pyqtSignal()
+    sort_volumes_by_name = pyqtSignal()
     sort_volumes_by_rating = pyqtSignal()
-    drawfolder = pyqtSignal(dict)
-    drawfile = pyqtSignal(dict)
-    candidates = pyqtSignal(list)
-    db_input = pyqtSignal(tuple)
+    startjob = pyqtSignal(dict)
+    stop = pyqtSignal(dict)
+    volumelabel = pyqtSignal(dict)
+    autopair_complete = pyqtSignal()
+    pair_deletebutton_jobs_done = pyqtSignal()
+    path_deletebutton_jobs_done = pyqtSignal()
+    center_relative = pyqtSignal()
 
 
 class Worker(QRunnable):

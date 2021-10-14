@@ -1,3 +1,4 @@
+import random
 from PyQt5                        import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore                 import QPoint
 from PyQt5.QtGui                  import QColor, QPen
@@ -1004,7 +1005,6 @@ class TOOLPublisher(POPUPTool):
         until we know all names!
         """
         title = 'PUBLISHERS'
-        self.main.shadehandler()
         self.publisher_widget = PUBtoVOLtoISSUEScroll(self.main.back, self.main, parent=self, title=title)
         self.publisher_widget.title.draw_sorting_menus(publishers=True)
 
@@ -1032,7 +1032,6 @@ class TOOLPublisher(POPUPTool):
 class TOOLFolders(POPUPTool):
     def create_browser_widget(self):
         title = 'ALL FILES AND FOLDERS'
-        self.main.shadehandler()
         self.browser_widget = PUBtoVOLtoISSUEScroll(
             self.main.back, self.main, parent=self, title=title, killsignal='kill_browser_widget', width=700)
         self.browser_widget.sort_label.close()
@@ -1387,6 +1386,61 @@ class TOOLComicvine(POPUPTool):
         def delete_cv_key(self, *args, **kwargs):
             t.save_config(self.type, None, delete=True)
 
+    class Scan50(GLOBALDeactivate, ExecutableLookCheckable):
+        def post_init(self):
+            self.button.setMouseTracking(True)
+            self.textlabel.setMouseTracking(True)
+
+            self.directives['activation'] = [
+                dict(object=self.textlabel, color='white'),
+                dict(object=self.button, background=BTN_SHINE, color=BTN_SHINE),
+            ]
+
+            self.directives['deactivation'] = [
+                dict(object=self.textlabel, color=BTN_SHADE),
+                dict(object=self.button, background=BTN_SHADE, color=BTN_SHADE),
+            ]
+        def special(self):
+            return True
+
+        def start_next_job(self, first_run=False):
+            if not first_run:
+                self.infowidget.quit()
+
+            ready = [(dict(database=x['database'], usable=None, used=False, count=0)) for x in self.que if x['active']]
+            if ready:
+                self.main.draw_list_comics = ready
+                self.main.draw_from_comiclist()
+                for i in self.que:
+                    i['active'] = False
+
+            for i in self.que:
+                if not i['used']:
+                    i['active'] = True
+                    i['used'] = True
+
+                    signalname = 'infowidget_signal_' + str(i['database'][0])
+                    self.signal = t.signals(signalname, reset=True)
+                    self.signal.autopair_complete.connect(self.start_next_job)
+
+                    from bscripts.infowidget import INFOWidget
+                    self.infowidget = INFOWidget(
+                        self.main.back, self, self.main, type='info_widget', database=i['database'], scan50=True)
+
+                    break
+
+        def button_clicked(self):
+            data = sqlite.execute('select * from comics where comic_id is null and type is 1', all=True)
+            random.shuffle(data)
+            if data:
+                self.main.reset_widgets('main')
+                self.que = [dict(used=False, database=x, active=False) for count, x in enumerate(data) if count < 5]
+                self.start_next_job(first_run=True)
+
+        def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+            self.activation_toggle()
+            self.button_clicked()
+
     def show_cv_settings(self):
         self.blackgray = UniversalSettingsArea(self.main)
 
@@ -1449,17 +1503,30 @@ class TOOLComicvine(POPUPTool):
                     type='comicvine_lower_threshold'
                 )),
         ]
+        d5 = [
+            dict(
+                text='SCAN 50 COMICS NOW',
+                tooltip='makes sense to do 50 at the time since comicvine servers will scream at you if you pull from them to offen (will only try unpaired)',
+                textsize=TEXTSIZE,
+                widget=self.Scan50,
+                post_init=True,
+                kwargs=dict(
+                    type='_scan_50_now'
+                )),
+        ]
 
         header = self.blackgray.make_header(title='COMICVINE')
         set1 = self.blackgray.make_this_into_folder_settings(d1)
         set2 = self.blackgray.make_this_into_checkable_buttons(d2, canvaswidth=330)
         set3 = self.blackgray.make_this_into_checkable_button_with_LCDrow(d3, canvaswidth=330)
         set4 = self.blackgray.make_this_into_LCDrow(d4, canvaswidth=330)
+        set5 = self.blackgray.make_this_into_checkable_buttons(d5, canvaswidth=330)
 
         t.pos(set1, below=header, y_margin=3)
         t.pos(set2, below=set1, y_margin=5)
         t.pos(set3, below=set2, y_margin=5)
         t.pos(set4, below=set3, y_margin=5)
+        t.pos(set5, below=set4, y_margin=5)
 
         t.pos(self.blackgray, under=self, move=[10,10])
         self.blackgray.expand_me([x for x in self.blackgray.blackgrays])

@@ -51,20 +51,35 @@ class INFOCoverWidget(Cover):
             self.parent.quit()
 
 class INFOWidget(ComicWidget):
-    def __init__(self, place, parent, main, type, database):
+    def __init__(self, place, parent, main, type, database, scan50=False):
         super().__init__(place=place, main=main, type=type)
+
+        self.parent = parent
+        self.database = database
+        self.relatives = []
+        self.scan50 = scan50
+
+        if scan50:
+            self.signal = t.signals('infowidget_signal_' + str(self.database[0]), reset=False)
+            self.hide()
+        else:
+            self.signal = t.signals('infowidget_signal_' + str(self.database[0]), reset=True)
 
         self.setFrameStyle(QtWidgets.QFrame.Box|QtWidgets.QFrame.Raised)
         self.setLineWidth(1)
         self.setMidLineWidth(2)
         t.style(self, tooltip=True, border='black', color='black', background='white')
-        self.parent = parent
-        self.database = database
-        self.relatives = []
+
         self.activation_toggle(force=True, save=False)
         esc = QShortcut(QKeySequence(Qt.Key_Escape), self)
         esc.activated.connect(self.quit)
+
+        self.signal.buildrelative.connect(self.create_relative)
+        self.signal.pickrelatives.connect(self.pick_relatives)
+        self.signal.volumelabel.connect(self.init_volumes_label)
+
         self.post_init()
+
 
     def make_cover(self, coverfile=None, cover_height=500):
         """
@@ -110,10 +125,6 @@ class INFOWidget(ComicWidget):
                 delattr(self, variable)
 
     def post_init(self):
-        self.signal = t.signals('infowidget_signal_' + str(self.database[0]), reset=True)
-        self.signal.buildrelative.connect(self.create_relative)
-        self.signal.pickrelatives.connect(self.pick_relatives)
-        self.signal.volumelabel.connect(self.init_volumes_label)
 
         def generate_global_signal(self):
             global_signal = '_global_on_off_' + str(self.database[0])
@@ -571,6 +582,7 @@ class INFOWidget(ComicWidget):
                         extravar=dict(
                             database=self.database,
                             local_path_widget=self.local_path_widget,
+                            parent=self,
                         ),
                     ))
             ]
@@ -1129,10 +1141,14 @@ class INFOWidget(ComicWidget):
 
             def use_deletebutton_to_signal_when_cv_done(self, d):
                 if 'delete_button' in dir(d[0]['label']):
-                    delete_button = d[0]['label'].delete_button
-                    t.style(delete_button, background='red')
-                    cvsignal = t.signals('cv_jobs_done' + str(self.database[0]), reset=True)
-                    cvsignal.finished.connect(lambda: t.style(delete_button, background=DARKRED))
+                    def signal_jobs_done():
+                        t.style(self.pair_delete_button, background=DARKRED)
+
+                    self.pair_delete_button = d[0]['label'].delete_button
+                    t.style(self.pair_delete_button, background='red')
+                    # cvsignal = t.signals('cv_jobs_done' + str(self.database[0]), reset=True)
+                    # cvsignal.finished.connect(lambda: t.style(delete_button, background=DARKRED))
+                    self.signal.pair_deletebutton_jobs_done.connect(signal_jobs_done)
 
             set7 = UniversalSettingsArea(self,extravar=dict(fortifyed=True))
             t.pos(set7, height=36, above=set6, y_margin=3)
@@ -1488,11 +1504,11 @@ class INFOWidget(ComicWidget):
                     t.correct_broken_font_size(self.proxy_label)
                     self.setToolTip('DOWNLOADED COVER FROM COMICVINE, COULDNT FIND ISSUE AMONG YOUR FILES')
 
-                    signal_string = 'found_local_cancidate' + str(self.database[DB.comics.comic_id])
-                    self.found_local_candidate_signal = t.signals(signal_string, reset=True)
-                    self.found_local_candidate_signal.db_input.connect(self.found_local_candidate)
+                    self.parent.signal.db_input.connect(self.found_local_candidate)
 
-                    t.start_thread(self.find_local_candidate)
+                    data = sqlite.execute('select * from comics where comic_id is null', all=True)
+                    data = [x for x in data if x[DB.comics.type] == 1] # make real list if bug with sqlite thread
+                    t.start_thread(self.find_local_candidate, worker_arguments=data)
 
                 self.show()
 
@@ -1524,7 +1540,7 @@ class INFOWidget(ComicWidget):
 
                 self.database = total_and_db_input[1]
 
-            def find_local_candidate(self):
+            def find_local_candidate(self, data):
                 if not self.comicvine_load:
                     return
 
@@ -1535,8 +1551,8 @@ class INFOWidget(ComicWidget):
                 if not issue_number or not volume_name or not cover_date:
                     return
 
-                data = sqlite.execute('select * from comics where comic_id is null and type is 1', all=True)
                 candidates = []
+                skeptic_candidates = []
                 for i in data:
                     cv = GUESSComicVineID(database=i, autoinit=False)
                     iter_year = cv.extract_year()
@@ -1550,14 +1566,25 @@ class INFOWidget(ComicWidget):
                     if issue_number != str(iter_issuenumber):
                         continue
 
-                    iter_volumename = cv.extract_volume_name()
+                    iter_volumename = cv.extract_volume_name_exclude_version_and_dash()
                     if iter_volumename.lower() != volume_name.lower():
-                        continue
+                        if t.config('dev_mode'):
+                            if volume_name.lower().find(iter_volumename.lower()) > -1:
+                                skeptic_candidates.append(i)
+                            elif iter_volumename.lower().find(volume_name.lower()) > -1:
+                                skeptic_candidates.append(i)
+                            else:
+                                continue
+                        else:
+                            continue
 
                     candidates.append(i)
 
                 if not candidates:
-                    return
+                    if skeptic_candidates:
+                        candidates = skeptic_candidates
+                    else:
+                        return
 
                 lap = []
                 for count, candidate in enumerate(candidates):
@@ -1577,7 +1604,7 @@ class INFOWidget(ComicWidget):
 
                 if lap:
                     lap.sort(key=lambda x: x[0], reverse=True)
-                    self.found_local_candidate_signal.db_input.emit(lap[0])
+                    self.parent.signal.db_input.emit(lap[0])
 
             def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
                 if ev.button() == 1:
@@ -1592,9 +1619,7 @@ class INFOWidget(ComicWidget):
 
         if instructions['center']:
             self.relatives.append(neighbour)
-
-            signal = t.signals('_build_relatives_from_proxy_parent', delete_afterwards=True)
-            signal.finished.emit()
+            self.signal.center_relative.emit()
 
         elif self.relatives[-1].count < instructions['count']:
             self.relatives.append(neighbour)
@@ -1604,14 +1629,15 @@ class INFOWidget(ComicWidget):
 
         self.position_relatives()
 
-
-
     def update_comicvine(self):
 
         if self.refresh_volume_id(self.database):
             self.database = sqlite.refresh_db_input('comics', self.database)
 
         if not self.database[DB.comics.volume_id]:
+            return
+
+        if self.scan50: # overwhelming to scan relatives while just finding its own id, plus theres a que
             return
 
         maxrelatives = 5 # todo make this number changable in a way so GUI scales niceley
@@ -1631,8 +1657,7 @@ class INFOWidget(ComicWidget):
         maxrelatives = len([x for x in candidates if x['used']])
 
         if len(candidates) < 2: # ignore if just one
-            cvsignal = t.signals('cv_jobs_done' + str(self.database[0]))
-            cvsignal.finished.emit()
+            self.signal.pair_deletebutton_jobs_done.emit()
             return
 
         class SmallVolume(GLOBALDeactivate):
@@ -1646,7 +1671,6 @@ class INFOWidget(ComicWidget):
 
 
             def styleme(self):
-
                 if self.database[0]:
                     normal_background = 'rgb(115,115,130)'
                     normal_color = UNREAD_C_1
@@ -1680,7 +1704,7 @@ class INFOWidget(ComicWidget):
                     dict(object=self, background=normal_background, color=normal_color),
                 ]
 
-            def styleall(self, ev=None):
+            def styleall(self, mousebutton=1):
                 """
                 if all five relatives-gallery are accounted for in the
                 current volumelabel there's no need for a redraw and
@@ -1693,7 +1717,7 @@ class INFOWidget(ComicWidget):
                 for cvid in cvids:
                     for count, i in enumerate(self.parent.volumeslabel.volwidgets):
 
-                        if i.database[DB.comics.comic_id] == cvid and ev.button() != 2: # halts break to enforce redraw
+                        if i.database[DB.comics.comic_id] == cvid and mousebutton != 2: # halts break to enforce redraw
                             break
 
                         elif count+1 == len(self.parent.volumeslabel.volwidgets): # redraw
@@ -1722,7 +1746,7 @@ class INFOWidget(ComicWidget):
 
                 return thumb
 
-            def order_jobs_for_relatives_and_volumelabel(self, ev=None, thumbnailpath=None):
+            def order_jobs_for_relatives_and_volumelabel(self, mousebutton=1, thumbnailpath=None):
                 if not thumbnailpath:
                     thumbnailpath = self.generate_cloud_thumb()
 
@@ -1734,16 +1758,19 @@ class INFOWidget(ComicWidget):
                 sorted_volume = self.parent.genereate_volume_sorted_by_issuenumbers()
                 candidates = self.parent.generate_candidates_list(sorted_volume)
 
+                def signal_bug_fix():
+                    print("IF CRASH LOOK HERE!")
+                    self.signal.center_relative.disconnect(signal_bug_fix)
+                    self.parent.pick_relatives(candidates)
+                    self.styleall(mousebutton)
+
                 for can in candidates:
                     if can['database'][DB.comics.comic_id] == self.database[DB.comics.comic_id]:
 
                         can['center'] = True
                         can['used'] = True
 
-                        signal = t.signals('_build_relatives_from_proxy_parent', reset=True)
-
-                        signal.finished.connect(partial(self.parent.pick_relatives, candidates))
-                        signal.finished.connect(partial(self.styleall, ev))
+                        self.signal.center_relative.connect(signal_bug_fix)
 
                         self.parent.signal.buildrelative.emit(dict(
                                                                     database=can['database'],
@@ -1757,10 +1784,10 @@ class INFOWidget(ComicWidget):
                 if self.database[0]: # local do
                     thumb = get_thumbnail_from_zip_or_database(database=self.database, proxy=False)
                     if thumb:
-                        self.order_jobs_for_relatives_and_volumelabel(ev, thumbnailpath=thumb)
+                        self.order_jobs_for_relatives_and_volumelabel(int(ev.button()), thumbnailpath=thumb)
 
                 else: # proxy do
-                    self.order_jobs_for_relatives_and_volumelabel(ev)
+                    self.order_jobs_for_relatives_and_volumelabel(int(ev.button()))
 
 
         class VolumeLabel(GOD):
@@ -1866,8 +1893,9 @@ class INFOWidget(ComicWidget):
         self.create_draw_all_volumes_button()
         self.volumeslabel.position_volumes()
 
-        cvsignal = t.signals('cv_jobs_done' + str(self.database[0]))
-        cvsignal.finished.emit()
+        # cvsignal = t.signals('cv_jobs_done' + str(self.database[0]))
+        # cvsignal.finished.emit()
+        self.signal.pair_deletebutton_jobs_done.emit()
 
     def create_draw_all_volumes_button(self):
         class DrawVolumesButton(GLOBALDeactivate):
@@ -2072,19 +2100,26 @@ class INFOWidget(ComicWidget):
         elif not t.config('comicvine_suggestion'):
             return
 
-        signal = t.signals('guess' + str(self.database[0]), reset=True)
+        def signal_guess_finished():
+            t.style(self.local_path_widget.delete_button, background=DARKRED)
+
         t.style(self.local_path_widget.delete_button, background='red')
-        signal.candidates.connect(self.draw_suggested_comic)
-        signal.finished.connect(lambda: t.style(self.local_path_widget.delete_button, background=DARKRED))
-        t.start_thread(GUESSComicVineID, worker_arguments=self.database, name='comicvine', threads=1)
+        self.signal.candidates.connect(self.draw_suggested_comic)
+        self.signal.path_deletebutton_jobs_done.connect(signal_guess_finished)
+        t.start_thread(GUESSComicVineID,
+                       worker_arguments=(self.database, True, self.signal,), name='comicvine', threads=1)
 
-    def quit(self, signal=True):
-        """
-        if open page from the same database
-        shade not closed (signal not emitted)
-        """
+    def quit(self):
+        self.signal.disconnect()
 
-        self.signal = t.signals('infowidget_signal_' + str(self.database[0]), reset=True)
+        for count in range(len(self.main.widgets['info']) - 1, -1, -1):
+            if self.main.widgets['info'][count] != self:
+                continue
+
+            self.main.widgets['info'].pop(count)
+            if not self.main.widgets['info'] and not self.main.pages_container:
+                signal = t.signals('_mainshade')
+                signal.quit.emit()
 
         self.close_and_pop_list('relatives')
         self.close_and_pop_list('volumeslabel')
@@ -2092,11 +2127,3 @@ class INFOWidget(ComicWidget):
             self.draw_volumes_button.close()
 
         self.close()
-
-        for i in self.main.pages_container:
-            if i.database[0] == self.database[0]:
-                return
-
-        if signal:
-            shade_signal = t.signals('shade')
-            shade_signal.quit.emit()

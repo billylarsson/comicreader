@@ -1,3 +1,4 @@
+from script_pack.settings_widgets import GOD
 from PyQt5                   import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore            import QPoint, Qt
 from PyQt5.QtGui             import QKeySequence
@@ -14,6 +15,13 @@ from bscripts.widgets        import TOOLWEBP
 import os
 import platform
 import time
+
+# query1 = 'update comics set comic_id = (?) where id is (?)'
+# query2 = 'update comics set publisher_id = (?) where id is (?)'
+# query3 = 'update comics set volume_id = (?) where id is (?)'
+#
+# for i in [query1, query2, query3]:
+#     sqlite.execute(i, values=(None, 8529,))
 
 class LSComicreaderMain(QtWidgets.QMainWindow):
     def __init__(self, primary_screen):
@@ -70,7 +78,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         self._gridlayout.addWidget(self.back, 0, 0, 1, 1)
         self.setCentralWidget(self.centralwidget)
 
-        self.setWindowTitle('Python Comicreader v2.0.2 alpha')
+        self.setWindowTitle('Python Comicreader v2.1 alpha')
         sqlite.dev_mode = t.config('dev_mode')
         t.style(self, name='main')
         self.widgets = dict(main=[], info=[])
@@ -97,32 +105,31 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             int(screen_width * 0.1), int(screen_width * 0.05), int(screen_width * 0.75), int(screen_height * 0.75))
 
     def shadehandler(self):
-        class SHADE(QtWidgets.QLabel):
-            def __init__(self, place, main):
-                super().__init__(place)
-                self.main = main
+        class SHADE(GOD):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
                 t.style(self, background='rgba(20,20,20,190)')
-                self.signal = t.signals('shade', reset=True)
+                self.signal = t.signals('_mainshade', reset=True)
                 self.signal.quit.connect(self.killswitch)
-                self.set_position()
+                self.show_and_set_position()
+
+            def show_and_set_position(self):
+                self.activation_toggle(force=True)
+                t.pos(self, inside=self.main.back)
                 self.show()
 
-            def set_position(self):
-                t.pos(self, inside=self.main.back)
-
             def killswitch(self):
+                self.activation_toggle(force=False)
+
                 if t.config('shade_surroundings'):
                     for count in range(len(self.main.pages_container)-1,-1,-1):
                         self.main.pages_container[count].close()
                         self.main.pages_container.pop(count)
 
                     for count in range(len(self.main.widgets['info'])-1,-1,-1):
-                        self.main.widgets['info'][count].quit(signal=False)
-                        self.main.widgets['info'].pop(count)
+                        self.main.widgets['info'][count].quit()
 
-                self.close()
-                if 'shade' in dir(self.main):
-                    del self.main.shade
+                self.hide()
 
             def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
                 self.killswitch()
@@ -131,7 +138,9 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             return
 
         if not 'shade' in dir(self):
-            self.shade = SHADE(self.back, main=self)
+            self.shade = SHADE(self.back, main=self, type='_mainshade')
+        else:
+            self.shade.show_and_set_position()
 
     def create_tool_buttons(self):
         """

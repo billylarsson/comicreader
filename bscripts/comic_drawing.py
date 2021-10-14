@@ -1526,7 +1526,6 @@ class ComicWidget(GOD):
                     break
 
             self.main.shadehandler()
-
             infowidget = INFOWidget(self.main.back, self, self.main, type='info_widget', database=self.database)
             infowidget.move(300,40)
             self.main.widgets['info'].append(infowidget)
