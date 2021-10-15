@@ -1405,12 +1405,19 @@ class TOOLComicvine(POPUPTool):
 
         def start_next_job(self, first_run=False):
             if not first_run:
+
+                if 'suggested_candidate' in dir(self.infowidget):
+                    if 'cycle' in dir(self.infowidget.suggested_candidate):
+                        sqlite_id = self.infowidget.database[0]
+                        self.diffdata[sqlite_id] = self.infowidget.suggested_candidate.cycle
+
                 self.infowidget.quit()
 
             ready = [(dict(database=x['database'], usable=None, used=False, count=0)) for x in self.que if x['active']]
             if ready:
                 self.main.draw_list_comics = ready
                 self.main.draw_from_comiclist()
+
                 for i in self.que:
                     i['active'] = False
 
@@ -1429,12 +1436,76 @@ class TOOLComicvine(POPUPTool):
 
                     break
 
-        def button_clicked(self):
+            t.start_thread(
+                self.main.dummy, worker_arguments=1, threads=1, name='diffdata', finished_function=self.show_diffdata)
+
+        def show_diffdata(self):
+            for dbid, cycle in self.diffdata.items():
+                for i in self.main.widgets['main']:
+                    if i.database[0] != dbid:
+                        continue
+
+                    if 'diffdata' in dir(i):
+                        continue
+
+                    i.diffdata = []
+                    for d in cycle:
+                        text = d['text']
+                        value = round(d['value'] * 100)
+                        if not value:
+                            continue
+
+                        if not i.diffdata:
+                            label = t.pos(new=i, width=i.cover, height=i.height() * 0.05, bottom=i.cover, left=i.cover)
+                            label.setText(text)
+                            label.fontsize = t.correct_broken_font_size(label)
+                            w = label.fontMetrics().boundingRect(label.text()).width()
+                            t.pos(label, width=w * 2.4)
+                            prelabel = label
+                        else:
+                            prelabel = i.diffdata[-1]
+                            label = t.pos(new=i, coat=prelabel, above=prelabel, y_margin=1)
+                            label.setText(text)
+
+                        i.diffdata.append(label)
+
+                        rlabel = t.pos(new=label, inside=label, width=label, sub=3)
+                        rlabel.setAlignment(QtCore.Qt.AlignRight)
+                        rlabel.setText(str(value) + '%')
+
+                        t.style(label,
+                                background='rgba(20,20,20,210)', color='rgb(180,180,190)', font=i.diffdata[0].fontsize)
+                        t.style(rlabel, background='transparent', color='gray', font=i.diffdata[0].fontsize)
+
+                        label.setFrameShape(QtWidgets.QFrame.Box)
+                        label.setLineWidth(1)
+
+                    header = t.pos(new=i, coat=label, height=label, add=10, above=label, y_margin=2)
+                    t.style(header, background='rgba(20,20,20,210)', color='rgb(180,180,190)')
+                    header.setAlignment(QtCore.Qt.AlignHCenter|QtCore.Qt.AlignVCenter)
+                    header.setFrameShape(QtWidgets.QFrame.Box)
+                    header.setLineWidth(2)
+
+                    for d in cycle:
+                        if d['text'] == 'TOTAL':
+                            if t.config('comicvine_autopair_threshold'):
+                                if d['value'] * 100 >= t.config('comicvine_autopair_threshold'):
+                                    header.setText('AUTO-PAIRED')
+                                    break
+
+                            header.setText('PROPOSED ONLY')
+
+                    t.correct_broken_font_size(header)
+
+
+
+        def button_clicked(self, que_amount=50):
             data = sqlite.execute('select * from comics where comic_id is null and type is 1', all=True)
             random.shuffle(data)
             if data:
+                self.diffdata = {}
                 self.main.reset_widgets('main')
-                self.que = [dict(used=False, database=x, active=False) for count, x in enumerate(data) if count < 5]
+                self.que = [dict(used=False, database=x, active=False) for count, x in enumerate(data) if count < que_amount]
                 self.start_next_job(first_run=True)
 
         def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:

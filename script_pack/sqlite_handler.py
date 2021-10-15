@@ -1,5 +1,6 @@
 from sqlalchemy      import create_engine, inspect
 from sqlalchemy.pool import SingletonThreadPool, StaticPool
+import copy
 import os
 import pathlib
 import platform
@@ -195,8 +196,7 @@ class SQLite:
                 with self.engine.connect() as connection:
                     if values:
                         result = connection.execute(query, values)
-                        if self.dev_mode:
-                            print("SQLITE write event:", query, values)
+                        self.dev_mode_print(query, values)
                     else:
                         result = connection.execute(query)
 
@@ -252,3 +252,21 @@ class SQLite:
         """
 
         return self.sqlite_superfunction(self.engine, table, column, type)
+
+    def dev_mode_print(self, query, values, hide_bytes=True):
+        if not self.dev_mode:
+            return
+
+        if type(values) == bytes and hide_bytes:
+            print('SQLITE event QUERY:', query, ':::BYTES:::')
+
+        elif type(values) == list or type(values) == tuple and hide_bytes:
+            proxyvalues = copy.copy(values)
+            proxyvalues = list(proxyvalues)
+            for count in range(len(proxyvalues)):
+                if type(proxyvalues[count]) == bytes:
+                    proxyvalues[count] = ':::BYTES:::'
+            print('SQLITE event QUERY:', query, proxyvalues)
+
+        else:
+            print('SQLITE event QUERY:', query, values)

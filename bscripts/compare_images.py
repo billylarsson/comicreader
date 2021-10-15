@@ -5,6 +5,18 @@ from bscripts.tricks import tech as t
 
 class ImageComparer:
     def __init__(self, image_one, image_two, grayscale=False, delete=True):
+        """
+        this class is messy and you'll get headache if you try to capture it in full, therefore
+        you should just give it two image paths and look for the results thats stored in
+        self.total, red, green, blue, total and so on (see fn:sum_job())
+
+        class is normally two separate instances, once for RGB and once for GRAYSCALE results.
+
+        :param image_one:  string (local path)
+        :param image_two:  string (local path)
+        :param grayscale: bool
+        :param delete: bool
+        """
         self.tmpfolder = None
         self.delete = delete
         self.grayscale = grayscale
@@ -24,15 +36,27 @@ class ImageComparer:
         if self.delete:
             shutil.rmtree(self.tmpfolder)
 
+    def pop_worst_slice(self, times=1):
+        """
+        sots the slice_results list and pops the lowest one times x
+        :param times: int
+        """
+        for c in range(times):
+            total = [self.slice_results[k]['total'] for k in self.slice_results]
+            total.sort()
+
+            for slicenumber in self.slice_results: # pops worst slice
+                if self.slice_results[slicenumber]['total'] == total[0]:
+                    self.slice_results.pop(slicenumber)
+                    break
 
     def sum_job(self):
-        total = [self.slice_results[k]['total'] for k in self.slice_results]
-        total.sort()
-
-        for slicenumber in self.slice_results: # pops worst slice
-            if self.slice_results[slicenumber]['total'] == total[0]:
-                self.slice_results.pop(slicenumber)
-                break
+        """
+        sets self.variable according to cycle list(s) so each result is easy accessable
+        from the object itself, this is used later on in the program.
+        dont like the try case here but ocatinally the whole spectrum arent accounted
+        """
+        self.pop_worst_slice(times=2) # pops the worst two
 
         if self.grayscale:
             cycle = ['total', 'black', 'entropy', 'colors', 'file_size']
@@ -48,6 +72,10 @@ class ImageComparer:
                 continue
 
     def reset_work(self):
+        """
+        there was an idea to reuse same object but that idea wasnt fulfiled,
+        but theres no harm done in having a fn that creates the dictionary
+        """
         if self.tmpfolder and os.path.exists(self.tmpfolder):
             shutil.rmtree(self.tmpfolder)
 
@@ -63,6 +91,17 @@ class ImageComparer:
         )
 
     def get_values(self):
+        """
+        this is all rewritten but ideas come from the first version of this comicreader.
+        i havent put much thougth into the logic i had back then, even though this might
+        improve if i did have a re-look into it.
+
+        i am currently unable to comment on everything that happens here, meaning later
+        me should probably reuse without glancing to much at this or rewrite it as done
+        twice already, but in short a dictionary is created thats thrown around and
+        collects all the nessesary colors, sizes and differences for each slice and the
+        dictionary is returned and set as a self.slice_results
+        """
         def get_colors(slice):
             maxcolors = 16800
             colors = slice.getcolors(maxcolors=maxcolors)
@@ -87,7 +126,7 @@ class ImageComparer:
             lendiff = color_difference(col1, col2)
             compare[count]['colors'] = lendiff
 
-        def insert_histogram_differences(slice1, slice2, compare, count):
+        def insert_histogram_differences(self, slice1, slice2, compare, count):
             if self.grayscale:
                 try:
                     b1, w1 = slice1.split()
@@ -170,7 +209,7 @@ class ImageComparer:
             sl2 = group2[count]
 
             insert_color_differences(slice1=sl1, slice2=sl2, compare=compare, count=count)
-            insert_histogram_differences(slice1=sl1, slice2=sl2, compare=compare, count=count)
+            insert_histogram_differences(self, slice1=sl1, slice2=sl2, compare=compare, count=count)
             insert_entropy_differences(slice1=sl1, slice2=sl2, compare=compare, count=count)
 
         for count in compare:
@@ -184,6 +223,10 @@ class ImageComparer:
         return compare
 
     def make_both_images_same_size(self):
+        """
+        there was some struggle here and even from that struggle i wasnt
+        fully able to always have the images tucked to the same size
+        """
         width = 99999
         height = 99999
 
@@ -212,6 +255,11 @@ class ImageComparer:
             self.work['loaded_resized'].append(i)
 
     def make_slices(self):
+        """
+        this makes 12 slices from each image and fills self.work with
+        each loaded slice and each slice's path, we need this later on
+        when we compare sizes and such.
+        """
         for c in range(len(self.work['loaded_resized'])):
             self.work['loaded_slices'].append([])
             self.work['saved_slices'].append([])

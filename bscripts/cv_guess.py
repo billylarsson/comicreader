@@ -25,6 +25,10 @@ class GUESSComicVineID:
             self.guess_my_id()
 
     def extract_year_with_parentesis(self):
+        """
+        normally the first try to capture year is within parentesis
+        and assuming starting years are 1 and 2 ie (1979 and 2021)
+        """
         candidates = []
         for c in range(len(self.fname) - 5):
             if self.fname[c] != '(':
@@ -47,6 +51,10 @@ class GUESSComicVineID:
             return candidates[0]
 
     def extract_year_without_parentesis(self):
+        """
+        if the first try to access the year is failed, a second
+        retry is done here ignoring parantesis around the numbers
+        """
         candidates = []
         for c in range(len(self.fname) - 3):
             if self.fname[c] not in {'1','2'}:
@@ -75,6 +83,12 @@ class GUESSComicVineID:
             return year
 
     def extract_issue_number(self):
+        # todo 2000 AD is a bitch, i'll need to re-think that idea later on
+        """
+        first round we accept and numbers after a  _,#,' ',(, if failed
+        then a second round that accept numbers after V (such as Hulk V2)
+        :return: int
+        """
         def two_rounds(self, accept_version_as_number=False):
             candidates = []
             chain = False
@@ -117,6 +131,11 @@ class GUESSComicVineID:
         return issuenumber
 
     def extract_volume_name(self):
+        """
+        i dont know if this is lazy or smart, but we fokus only on the preceedings
+        before year and issuenumbers and assume that is the volume name
+        :return:
+        """
         if self.cut:
             self.fname = self.fname[0:self.cut]
 
@@ -127,6 +146,11 @@ class GUESSComicVineID:
         return self.fname
 
     def extract_volume_name_exclude_version_and_dash(self):
+        """
+        removes the "PART" from volumename and then splits
+        the volumename in two parts if there's a - (dash)
+        in the name and use the first part as volumename
+        """
         self.volumename = self.extract_volume_name()
         if self.volumename.find(' - '):
             no_dash = self.volumename.strip().split(' - ')
@@ -137,7 +161,7 @@ class GUESSComicVineID:
         self.remove_obsticle_in_name(name, obsticle='part')
         return " ".join(name)
 
-    def cut_and_lowest_cut(self, string):
+    def cut_and_lowest_cut(self, string): # no idea what it does but seems to be used a lot
         if not self.cut or self.fname.find(string) < self.cut and self.fname.find(string) > -1:
             self.cut = self.fname.find(string)
             if self.cut > 0:
@@ -146,6 +170,9 @@ class GUESSComicVineID:
         self.fname = self.fname.replace(string, "")
 
     def emit_finished_signal(self):
+        """
+        toggles the red "button" in the infowidget when job's done
+        """
         if not self.finished:
             self.finished = True
             self.signal.path_deletebutton_jobs_done.emit()
@@ -165,55 +192,98 @@ class GUESSComicVineID:
                 self.emit_finished_signal()
 
     def remove_obsticle_in_name(self, nameslist, obsticle):
+        """
+        removes an entire word from the string (list) thats
+        used when searching for volumename in comicvine
+        :param nameslist: list
+        :param obsticle: string
+        :return: bool
+        """
         if obsticle == 'v':
             for count, i in enumerate(nameslist):
                 if i and len(i) < 4 and i[0].lower() == obsticle and i[-1].isdigit():
                     nameslist.pop(count)
                     return True
-        else:
+        else: # sure, i could save a row or two here if i wanted to
             for count, i in enumerate(nameslist):
                 if i and i.lower() == obsticle:
                     nameslist.pop(count)
                     return True
 
     def standard_volumes_search(self):
-        filters = {}
+        """
+        performes comicvine requests, as of now works amazing!
 
-        if self.volumename.find(' - '):
-            no_dash = self.volumename.strip().split(' - ')
-            pre_name = " ".join(no_dash)
-            name = pre_name.strip().split(' ')
-        else:
-            name = self.volumename.strip().split(" ")
+        one straight up as the self.volumename has captured it.
+        one while cutting out 'V' (suspect version) from the filename.
+        one while using first part of the fname when splitting dash ' - '
+        one while using first part if dash plus stripping 'PART' from fname
 
-        filters.update(dict(name=name))
-        vol_rv = comicvine(search='volumes', filters=filters)
+        then the results are paginated if the results are above 100, currently
+        2000 results are captured. then all volume_id's with issuecount >= the
+        found issuenumber are returned
+        :return: list with volume_id's
+        """
+        def genereate_things(self):
+            if self.volumename.find(' - '):
+                no_dash = self.volumename.strip().split(' - ')
+                pre_name = " ".join(no_dash)
+                name = pre_name.strip().split(' ')
+                return name, no_dash, pre_name
+            else:
+                name = self.volumename.strip().split(" ")
+                return name, None, None
 
-        if not vol_rv: # if no hits and V2 something in name, search once without it
+        def perform_search(self, name):
+            self.filters = dict(name=name)
+            vol_rv = comicvine(search='volumes', filters=self.filters)
+            return vol_rv
+
+        def second_search(self, name):
             if self.remove_obsticle_in_name(name, obsticle='v'):
-                filters = dict(name=name)
-                vol_rv = comicvine(search='volumes', filters=filters)
+                vol_rv = perform_search(self, name)
+                return vol_rv
 
-        if not vol_rv and self.volumename.find(' - ') > -1:
-            name = no_dash[0].strip().split(' ')
+        def third_search(self, name):
             self.remove_obsticle_in_name(name, obsticle='v')
-            filters = dict(name=name)
-            vol_rv = comicvine(search='volumes', filters=filters)
+            vol_rv = perform_search(self, name)
+            return vol_rv
 
-        if not vol_rv and self.remove_obsticle_in_name(name, obsticle='part'):
-            filters = dict(name=name)
-            vol_rv = comicvine(search='volumes', filters=filters)
+        def fourth_search(self, name):
+            if self.remove_obsticle_in_name(name, obsticle='part'):
+                vol_rv = perform_search(self, name)
+                return vol_rv
 
-        if not vol_rv:
-            return False
+        def four_different_searches(self):
+            name, no_dash, pre_name = genereate_things(self)
+            vol_rv = perform_search(self, name)
 
-        if len(vol_rv) >= 100:
-            for offset in [x * 100 for x in range(1, 20)]:
-                add_vol = comicvine(search='volumes', filters=filters, offset=offset)
+            if not vol_rv:
+                vol_rv = second_search(self, name)
+
+            if not vol_rv:
+                if self.volumename.find(' - ') > -1:
+                    name = no_dash[0].strip().split(' ')
+                    vol_rv = third_search(self, name)
+
+            if not vol_rv:
+                vol_rv = fourth_search(self, name)
+            return vol_rv
+
+        def paginate_results(self, vol_rv, times=20):
+            for offset in [x * 100 for x in range(1, times)]:
+                add_vol = comicvine(search='volumes', filters=self.filters, offset=offset)
                 if add_vol:
                     vol_rv += add_vol
                 if not add_vol or len(add_vol) != 100:
                     break
+
+        vol_rv = four_different_searches(self)
+        if not vol_rv:
+            return False
+
+        if len(vol_rv) >= 100:
+            paginate_results(self, vol_rv)
 
         if self.issuenumber:
             vol_rv = [str(x['id']) for x in vol_rv if x['count_of_issues'] >= self.issuenumber]

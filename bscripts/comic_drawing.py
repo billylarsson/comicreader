@@ -643,16 +643,14 @@ class PAGE(QtWidgets.QLabel):
         if open infowidget from the same database
         shade not closed (signal not emitted)
         """
-        signal = t.signals('reading')
-        signal.finished.emit()
-        self.close()
+        for count in range(len(self.main.pages_container)-1,-1,-1):
+            if self.main.pages_container[count] == self:
+                self.main.pages_container[count].close()
+                self.main.pages_container.pop(count)
 
-        for i in self.main.widgets['info']:
-            if i.database[0] == self.database[0]:
-                return
-
-        signal = t.signals('shade')
-        signal.quit.emit()
+        if not self.main.widgets['info'] and not self.main.pages_container:
+            signal = t.signals('_mainshade')
+            signal.quit.emit()
 
     def post_init(self, database, file, index):
         self.who_am_primary = index

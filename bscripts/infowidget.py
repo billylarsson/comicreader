@@ -1952,7 +1952,7 @@ class INFOWidget(ComicWidget):
                 rgb = work['rgb']
                 grayscale = work['grayscale']
 
-                cycle = [
+                self.cycle = [
                     dict(text='TOTAL', value=(rgb.total + grayscale.total) / 2),
                     dict(text='SIZE', value=rgb.file_size),
                     dict(text='COLORS', value=rgb.colors),
@@ -1972,7 +1972,7 @@ class INFOWidget(ComicWidget):
                     t.style(
                         label, background='rgba(10,10,10,220)', color='rgb(190,190,210)', font=self.labels[-1].font + 1)
 
-                for count, i in enumerate(cycle):
+                for count, i in enumerate(self.cycle):
                     text = i['text']
                     value = int(i['value'] * 100)
 
@@ -2001,7 +2001,7 @@ class INFOWidget(ComicWidget):
                     t.style(label, background='rgba(20,20,20,210)', color='rgb(180,180,190)')
                     t.style(rlabel, background='transparent', color='gray', font=label.font)
 
-                    if count+1 == len(cycle):
+                    if count+1 == len(self.cycle):
                         rlabel.close()
                         position_header(self, label)
                         self.title = label

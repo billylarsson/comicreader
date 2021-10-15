@@ -963,7 +963,7 @@ class ViktorinoxTechClass:
             return complete_dir
 
     @staticmethod
-    def correct_broken_font_size(object, presize=True, maxsize=14, minsize=5, x_margin=10, y_margin=0, shorten=False):
+    def correct_broken_font_size(object, presize=True, maxsize=24, minsize=5, x_margin=10, y_margin=0, shorten=False):
         if presize:
             tech.style(object, font=str(maxsize) + 'pt')
 
