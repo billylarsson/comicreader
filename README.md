@@ -1,12 +1,12 @@
 # comicreader
 
-Code here is experimental, for better stability click RELEASES to the right ->
-
 ![Screenshot from 2021-10-08 21-22-22](https://user-images.githubusercontent.com/59517785/136614432-e6602d61-dc0a-4c6a-a251-6c847edd9698.png)
 
-INSTALLATION:
+<h3>If you're on Windows i assume all you need to do is to run Comicreader.exe. Goto the RELEASE-area and download the zipfile.</h3>
 
-If you're on Windows i assume all you need to do is to unpack the ZIP-file and run the Comicreader.exe file
+
+
+INSTALLATION:
 
 1: Install Python: 
 https://www.python.org/downloads/
