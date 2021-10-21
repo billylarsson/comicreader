@@ -113,6 +113,9 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
                 self.signal.quit.connect(self.killswitch)
                 self.show_and_set_position()
 
+            def set_position(self):
+                self.show_and_set_position()
+
             def show_and_set_position(self):
                 self.activation_toggle(force=True)
                 t.pos(self, inside=self.main.back)

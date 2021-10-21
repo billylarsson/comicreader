@@ -12,16 +12,16 @@ class GUESSComicVineID:
         self.issuenumber = None
         self.cut = None
         self.finished = False
+        self.found_candidate = False
 
         self.loc = t.separate_file_from_folder(database[DB.comics.local_path])
         self.fname = self.loc.naked_filename
         self.database = database
+        if signal:
+            self.signal = signal
+        elif autoinit:
+            self.signal = t.signals('infowidget_signal_' + str(self.database[0]))
         if autoinit:
-            if signal:
-                self.signal = signal
-            else:
-                self.signal = t.signals('infowidget_signal_' + str(self.database[0]))
-
             self.guess_my_id()
 
     def extract_year_with_parentesis(self):
@@ -83,26 +83,29 @@ class GUESSComicVineID:
             return year
 
     def extract_issue_number(self):
-        # todo 2000 AD is a bitch, i'll need to re-think that idea later on
         """
-        first round we accept and numbers after a  _,#,' ',(, if failed
-        then a second round that accept numbers after V (such as Hulk V2)
+        first round we accept any numbers after a '0' ie: Darkness - 1979 002 (2021).cbz
+        second round we accept any numbers after a  _,#,' ',(, if failed ie :Thor #003
+        then a third round that accept numbers after V ie: Spider-man V2
         :return: int
         """
-        def two_rounds(self, accept_version_as_number=False):
+        def two_three_rounds(self, prezero=False, accept_version_as_number=False):
             candidates = []
             chain = False
-            if self.fname.lower().find('2000 ad') != -1 or self.fname.lower().find('2000ad') != -1:
-                self.fname = self.fname.replace('2000', "ÖÖÖÖ")
+            rvnum = None
+
+            cloaked = self.judge_dredd(cloak=True)
 
             for c in range(1, len(self.fname)):
                 if not chain:
-                    if accept_version_as_number:
-                        continuestruct = {'v', 'V'}
+                    if prezero:
+                        begins_with_struct = {'0'}
+                    elif accept_version_as_number:
+                        begins_with_struct = {'v', 'V'}
                     else:
-                        continuestruct = {'_', '#', ' ', '('}
+                        begins_with_struct = {'_', '#', ' ', '('}
 
-                    if self.fname[c - 1] not in continuestruct:
+                    if self.fname[c - 1] not in begins_with_struct:
                         continue
 
                     if self.fname[c].isdigit():
@@ -118,16 +121,19 @@ class GUESSComicVineID:
             if candidates:
                 self.cut_and_lowest_cut(candidates[0])
 
-                if self.fname.find('ÖÖÖÖ') != -1:
-                    self.fname = self.fname.replace('ÖÖÖÖ', '2000')
-
                 for c in range(len(candidates[0])):
                     if candidates[0][c] != '0':
-                        return int(candidates[0][c:])
+                        rvnum = int(candidates[0][c:])
+                        break
 
-        issuenumber = two_rounds(self)
+            self.judge_dredd(decloak=cloaked)
+            return rvnum
+
+        issuenumber = two_three_rounds(self, prezero=True)
         if not issuenumber:
-            issuenumber = two_rounds(self, accept_version_as_number=True)
+            issuenumber = two_three_rounds(self)
+        if not issuenumber:
+            issuenumber = two_three_rounds(self, accept_version_as_number=True)
         return issuenumber
 
     def extract_volume_name(self):
@@ -139,10 +145,15 @@ class GUESSComicVineID:
         if self.cut:
             self.fname = self.fname[0:self.cut]
 
+        for i in ['(', ')']:
+            if self.fname.find(i) > -1:
+                self.fname = self.fname[0:self.fname.find(i)]
+
         replacedict = {',': " ", "'s": "", "'": "", "  ": " "}
         for k,v in replacedict.items():
             self.fname = self.fname.replace(k,v)
         self.fname = self.fname.replace('  ', ' ')
+
         return self.fname
 
     def extract_volume_name_exclude_version_and_dash(self):
@@ -175,13 +186,17 @@ class GUESSComicVineID:
         """
         if not self.finished:
             self.finished = True
-            self.signal.path_deletebutton_jobs_done.emit()
-            self.signal.autopair_complete.emit()
+            self.signal.path_deletebutton_jobs_done.emit(self)
+
+            self.signal.autopair_complete.emit() # tells the Scan50 to start next job
 
     def guess_my_id(self):
         self.year = self.extract_year() # int
         self.issuenumber = self.extract_issue_number() # int
         self.volumename = self.extract_volume_name() # string
+
+        if self.volumename.upper().find('2000AD') > -1:
+            self.volumename = '2000 AD'
 
         if not self.volumename:
             self.emit_finished_signal()
@@ -190,6 +205,10 @@ class GUESSComicVineID:
         else:
             if not self.search_comicvine():
                 self.emit_finished_signal()
+
+    def highjack_search(self):
+        if not self.search_comicvine():
+            self.emit_finished_signal()
 
     def remove_obsticle_in_name(self, nameslist, obsticle):
         """
@@ -210,7 +229,18 @@ class GUESSComicVineID:
                     nameslist.pop(count)
                     return True
 
-    def standard_volumes_search(self):
+    def judge_dredd(self, cloak=False, decloak=False):
+        if cloak:
+            if self.fname.upper().find('2000AD') != -1:
+                md5 = t.md5_hash_string('2000')
+                self.fname = self.fname.replace('2000', md5)
+                return True
+
+        elif decloak:
+            md5 = t.md5_hash_string('2000')
+            self.fname = self.fname.replace(md5, '2000')
+
+    def standard_volumes_search(self, ignore_length=False):
         """
         performes comicvine requests, as of now works amazing!
 
@@ -222,6 +252,8 @@ class GUESSComicVineID:
         then the results are paginated if the results are above 100, currently
         2000 results are captured. then all volume_id's with issuecount >= the
         found issuenumber are returned
+
+        :param ignore_length: makes Flash number 780 searchable in results even if len(130)
         :return: list with volume_id's
         """
         def genereate_things(self):
@@ -234,7 +266,14 @@ class GUESSComicVineID:
                 name = self.volumename.strip().split(" ")
                 return name, None, None
 
+        def remove_trash_from_name(name):
+            for i in {'-', '#', ' ', '', '_', 'v', 'V'}:
+                for count in range(len(name)-1,-1,-1):
+                    if name[count] == i:
+                        name.pop(count)
+
         def perform_search(self, name):
+            remove_trash_from_name(name)
             self.filters = dict(name=name)
             vol_rv = comicvine(search='volumes', filters=self.filters)
             return vol_rv
@@ -270,7 +309,7 @@ class GUESSComicVineID:
                 vol_rv = fourth_search(self, name)
             return vol_rv
 
-        def paginate_results(self, vol_rv, times=20):
+        def paginate_results(self, vol_rv, times=10):
             for offset in [x * 100 for x in range(1, times)]:
                 add_vol = comicvine(search='volumes', filters=self.filters, offset=offset)
                 if add_vol:
@@ -285,7 +324,7 @@ class GUESSComicVineID:
         if len(vol_rv) >= 100:
             paginate_results(self, vol_rv)
 
-        if self.issuenumber:
+        if self.issuenumber and not ignore_length:
             vol_rv = [str(x['id']) for x in vol_rv if x['count_of_issues'] >= self.issuenumber]
         else:
             vol_rv = [str(x['id']) for x in vol_rv]
@@ -309,8 +348,10 @@ class GUESSComicVineID:
 
     def search_comicvine(self):
         vol_rv = self.standard_volumes_search()
-        if not vol_rv:
-            return False
+        if not vol_rv and self.issuenumber:
+            vol_rv = self.standard_volumes_search(ignore_length=True)
+            if not vol_rv:
+                return False
 
         filters = {}
 
@@ -346,6 +387,7 @@ class GUESSComicVineID:
                 break
 
         if candidates:
+            self.found_candidate = True
             winners = self.fetch_best_candidate(candidates=candidates)
             self.signal.candidates.emit(winners)
 

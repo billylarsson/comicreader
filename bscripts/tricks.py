@@ -1551,7 +1551,7 @@ class WorkerSignals(QObject):
     volumelabel = pyqtSignal(dict)
     autopair_complete = pyqtSignal()
     pair_deletebutton_jobs_done = pyqtSignal()
-    path_deletebutton_jobs_done = pyqtSignal()
+    path_deletebutton_jobs_done = pyqtSignal(object)
     center_relative = pyqtSignal()
 
 

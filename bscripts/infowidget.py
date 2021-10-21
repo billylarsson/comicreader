@@ -15,7 +15,6 @@ from bscripts.file_handling       import concurrent_pdf_to_webp_convertion
 from bscripts.file_handling       import extract_from_zip_or_pdf
 from bscripts.file_handling       import get_thumbnail_from_zip_or_database
 from bscripts.tricks              import tech as t
-from functools                    import partial
 from script_pack.preset_colors    import *
 from script_pack.settings_widgets import ExecutableLookCheckable
 from script_pack.settings_widgets import FolderSettingsAndGLobalHighlight
@@ -1759,8 +1758,7 @@ class INFOWidget(ComicWidget):
                 candidates = self.parent.generate_candidates_list(sorted_volume)
 
                 def signal_bug_fix():
-                    print("IF CRASH LOOK HERE!")
-                    self.signal.center_relative.disconnect(signal_bug_fix)
+                    self.parent.signal.center_relative.disconnect(signal_bug_fix)
                     self.parent.pick_relatives(candidates)
                     self.styleall(mousebutton)
 
@@ -1770,7 +1768,7 @@ class INFOWidget(ComicWidget):
                         can['center'] = True
                         can['used'] = True
 
-                        self.signal.center_relative.connect(signal_bug_fix)
+                        self.parent.signal.center_relative.connect(signal_bug_fix)
 
                         self.parent.signal.buildrelative.emit(dict(
                                                                     database=can['database'],
@@ -2041,10 +2039,11 @@ class INFOWidget(ComicWidget):
                     getattr(self, i).close()
 
             path, comic_id = work['cover'], work['comic_id']
-            pixmap = QPixmap(path).scaledToWidth(self.pair_button.width() - 2, QtCore.Qt.SmoothTransformation)
+            smooth = QtCore.Qt.SmoothTransformation
+            w = self.pair_button.width() - 2
+            pixmap = QPixmap(path).scaledToWidth(w, smooth)
             if pixmap.height() > pixmap.width() * 3:
-                pixmap = QPixmap(path).scaled(
-                self.pair_button.width() - 2, self.pair_button.height() * 3, transformMode=QtCore.Qt.SmoothTransformation)
+                pixmap = QPixmap(path).scaled(w, self.pair_button.height() * 3, transformMode=smooth)
 
             label = Candidate(self)
             label.comic_id = comic_id
@@ -2100,8 +2099,79 @@ class INFOWidget(ComicWidget):
         elif not t.config('comicvine_suggestion'):
             return
 
-        def signal_guess_finished():
+        class FREESearchLineEdit(QtWidgets.QLineEdit):
+            def __init__(self, place, value, type, rlabel, fn_search, backplate):
+                super().__init__(place)
+                if value:
+                    self.setText(str(value))
+                if type != 'VOL.NAME':
+                    self.setValidator(QtGui.QIntValidator(0, 2147483647))
+
+                self.rlabel = QtWidgets.QLabel(self)
+                self.rlabel.setAlignment(QtCore.Qt.AlignVCenter)
+                self.rlabel.setText(rlabel)
+                t.pos(self.rlabel, width=place.width() * 0.3)
+                t.style(self.rlabel, color='gray', background='transparent')
+                self.value = value
+                self.type = type
+                self.returnPressed.connect(lambda: fn_search(backplate.parent, backplate))
+                self.show()
+
+            def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
+                t.pos(self.rlabel, height=self, right=self.width())
+                t.correct_broken_font_size(self.rlabel, y_margin=4)
+
+        def manual_search_comcivine(self, backplate):
+            cv = GUESSComicVineID(self.database, autoinit=False, signal=self.signal)
+
+            cv.volumename = str(backplate.volumename.text().strip())
+            cv.issuenumber = int(backplate.issuenumber.text())
+            cv.year = int(backplate.year.text())
+
+            t.style(self.local_path_widget.delete_button, background='red')
+            t.start_thread(cv.highjack_search)
+
+        def draw_free_search_thingey(self, cvwidget):
+            if 'cv_searcher' in dir(self):
+                return
+
+            self.cv_searcher = t.pos(new=self, width=self.pair_button, height=30, sub=2)
+            self.cv_searcher.parent = self
+            self.title = t.pos(new=self.cv_searcher, inside=self.cv_searcher)
+            self.title.setText('MANUAL COMICVINE STRING')
+            self.title.setAlignment(QtCore.Qt.AlignVCenter|QtCore.Qt.AlignHCenter)
+            self.title.setFrameShape(QtWidgets.QFrame.Box)
+            self.title.setLineWidth(1)
+            self.title.setToolTip('DEV-MODE thingey... edit and press enter!')
+            t.style(self.title, background='rgba(20,20,40,200)', color='white')
+            t.correct_broken_font_size(self.title)
+
+            def kill(*args, **kwargs):
+                self.cv_searcher.close()
+                del self.cv_searcher
+
+            self.signal.candidates.connect(lambda: kill)
+
+            lineedits = dict(volumename='VOL.NAME', issuenumber='ISSUE.NUM', year='COVER.YEAR')
+            for count, (k,v) in enumerate(lineedits.items()):
+
+                lineedit = FREESearchLineEdit(self.cv_searcher, value=getattr(cvwidget, k), type=v, rlabel=v,
+                                              fn_search=manual_search_comcivine, backplate=self.cv_searcher)
+
+                setattr(self.cv_searcher, k, lineedit)
+                t.pos(getattr(self.cv_searcher, k), inside=self.cv_searcher)
+
+                top = (self.cv_searcher.height() + 2) * (count+1)
+                t.pos(getattr(self.cv_searcher, k), top=top)
+
+                if count+1 == len(lineedits):
+                    h = getattr(self.cv_searcher, k).geometry().bottom() + 1
+                    t.pos(self.cv_searcher, height=h, above=self.pair_button, y_margin=2)
+
+        def signal_guess_finished(cvwidget):
             t.style(self.local_path_widget.delete_button, background=DARKRED)
+            if not cvwidget.found_candidate and t.config('dev_mode'):
+                draw_free_search_thingey(self, cvwidget)
 
         t.style(self.local_path_widget.delete_button, background='red')
         self.signal.candidates.connect(self.draw_suggested_comic)
