@@ -1145,8 +1145,6 @@ class INFOWidget(ComicWidget):
 
                     self.pair_delete_button = d[0]['label'].delete_button
                     t.style(self.pair_delete_button, background='red')
-                    # cvsignal = t.signals('cv_jobs_done' + str(self.database[0]), reset=True)
-                    # cvsignal.finished.connect(lambda: t.style(delete_button, background=DARKRED))
                     self.signal.pair_deletebutton_jobs_done.connect(signal_jobs_done)
 
             set7 = UniversalSettingsArea(self,extravar=dict(fortifyed=True))
@@ -1954,7 +1952,6 @@ class INFOWidget(ComicWidget):
                     dict(text='TOTAL', value=(rgb.total + grayscale.total) / 2),
                     dict(text='SIZE', value=rgb.file_size),
                     dict(text='COLORS', value=rgb.colors),
-                    dict(text='ENTROPY', value=rgb.entropy),
                     dict(text='GRAY(S)', value=grayscale.total),
                     dict(text='BLACK', value=grayscale.black),
                     dict(text='BLUE', value=rgb.blue),
@@ -2075,7 +2072,10 @@ class INFOWidget(ComicWidget):
             if t.config('comicvine_autopair_threshold'):
                 if t.config('comicvine_autopair_threshold', curious=True) < work['total'] * 100:
                     self.pair_lineedit.setText(str(comic_id))
-                    self.pair_label.save_button.mousePressEvent()
+
+                    if 'save_button' in dir(self.pair_label):
+                        self.pair_label.save_button.mousePressEvent()
+
                     self.pair_textlabel.setText('AUTO\nPAIRED')
                     t.correct_broken_font_size(self.pair_textlabel, x_margin=1)
                     title.setText('READER AUTOMATICALLY PAIRED')
@@ -2125,8 +2125,12 @@ class INFOWidget(ComicWidget):
             cv = GUESSComicVineID(self.database, autoinit=False, signal=self.signal)
 
             cv.volumename = str(backplate.volumename.text().strip())
-            cv.issuenumber = int(backplate.issuenumber.text())
-            cv.year = int(backplate.year.text())
+
+            if backplate.issuenumber.text():
+                cv.issuenumber = int(backplate.issuenumber.text())
+
+            if backplate.year.text():
+                cv.year = int(backplate.year.text())
 
             t.style(self.local_path_widget.delete_button, background='red')
             t.start_thread(cv.highjack_search)
@@ -2147,8 +2151,9 @@ class INFOWidget(ComicWidget):
             t.correct_broken_font_size(self.title)
 
             def kill(*args, **kwargs):
-                self.cv_searcher.close()
-                del self.cv_searcher
+                if 'cv_searcher' in dir(self):
+                    self.cv_searcher.close()
+                    del self.cv_searcher
 
             self.signal.candidates.connect(lambda: kill)
 

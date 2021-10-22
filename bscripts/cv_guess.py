@@ -17,10 +17,12 @@ class GUESSComicVineID:
         self.loc = t.separate_file_from_folder(database[DB.comics.local_path])
         self.fname = self.loc.naked_filename
         self.database = database
+
         if signal:
             self.signal = signal
         elif autoinit:
             self.signal = t.signals('infowidget_signal_' + str(self.database[0]))
+
         if autoinit:
             self.guess_my_id()
 

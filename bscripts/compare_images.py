@@ -59,9 +59,9 @@ class ImageComparer:
         self.pop_worst_slice(times=2) # pops the worst two
 
         if self.grayscale:
-            cycle = ['total', 'black', 'entropy', 'colors', 'file_size']
+            cycle = ['total', 'black', 'colors', 'file_size']
         else:
-            cycle = ['total', 'red', 'green', 'blue', 'entropy', 'colors', 'file_size']
+            cycle = ['total', 'red', 'green', 'blue', 'colors', 'file_size']
 
         for i in cycle:
             setattr(self, i, 0)

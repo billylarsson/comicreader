@@ -1497,15 +1497,21 @@ class TOOLComicvine(POPUPTool):
 
                     t.correct_broken_font_size(header)
 
-
-
-        def button_clicked(self, que_amount=50):
+        def button_clicked(self):
             data = sqlite.execute('select * from comics where comic_id is null and type is 1', all=True)
             random.shuffle(data)
             if data:
+                que_amount = t.config('scan_50_now') or 10
+                #self.que = [dict(used=False, database=x, active=False) for count, x in enumerate(data) if count < que_amount]
                 self.diffdata = {}
                 self.main.reset_widgets('main')
-                self.que = [dict(used=False, database=x, active=False) for count, x in enumerate(data) if count < que_amount]
+                self.que = []
+                for i in data:
+                    if os.path.exists(i[DB.comics.local_path]):
+                        self.que.append(dict(used=False, database=i, active=False))
+                    if len(self.que) >= que_amount:
+                        break
+
                 self.start_next_job(first_run=True)
 
         def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
@@ -1574,10 +1580,11 @@ class TOOLComicvine(POPUPTool):
                     type='comicvine_lower_threshold'
                 )),
         ]
+
         d5 = [
             dict(
-                text='SCAN 50 COMICS NOW',
-                tooltip='makes sense to do 50 at the time since comicvine servers will scream at you if you pull from them to offen (will only try unpaired)',
+                text='AUTOPAIR NEW COMICS',
+                tooltip='makes sense to do less than 50 at the time since comicvine servers will scream at you if you pull from them to offen (will only try unpaired)',
                 textsize=TEXTSIZE,
                 widget=self.Scan50,
                 post_init=True,
@@ -1591,13 +1598,32 @@ class TOOLComicvine(POPUPTool):
         set2 = self.blackgray.make_this_into_checkable_buttons(d2, canvaswidth=330)
         set3 = self.blackgray.make_this_into_checkable_button_with_LCDrow(d3, canvaswidth=330)
         set4 = self.blackgray.make_this_into_LCDrow(d4, canvaswidth=330)
-        set5 = self.blackgray.make_this_into_checkable_buttons(d5, canvaswidth=330)
+        set5 = self.blackgray.make_this_into_checkable_buttons(d5, canvaswidth=270)
 
         t.pos(set1, below=header, y_margin=3)
         t.pos(set2, below=set1, y_margin=5)
         t.pos(set3, below=set2, y_margin=5)
-        t.pos(set4, below=set3, y_margin=5)
-        t.pos(set5, below=set4, y_margin=5)
+        t.pos(set5, below=set3, y_margin=5)
+        t.pos(set4, below=set5, y_margin=5)
+
+        # todo lazy fix, not nessesary to fix but this is very ugly codewise >
+        d6 = [
+            dict(
+                text='',
+                textsize=TEXTSIZE,
+                max_value=100,
+                min_value=1,
+                kwargs=dict(
+                    type='scan_50_now'
+                )),
+        ]
+        set6 = self.blackgray.make_this_into_LCDrow(d6, canvaswidth=330)
+        t.pos(set6, top=set5, right=set4)
+        tmp = t.pos(new=set5, background='black', width=2, height=set5, right=set5)
+        t.pos(new=tmp, size=[2, 1], move=[0, 1], background='gray')
+        t.pos(new=tmp, size=[2, 1], move=[0, tmp.height()-2], background='gray')
+        set5.raise_()
+        # todo lazy fix, not nessesary to fix but this is very ugly codewise <
 
         t.pos(self.blackgray, under=self, move=[10,10])
         self.blackgray.expand_me([x for x in self.blackgray.blackgrays])

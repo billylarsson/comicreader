@@ -76,7 +76,7 @@ class TOOLSettings(POPUPTool):
                 kwargs = dict(type='show_comics'),
             ),
             dict(
-                text='SHOW MAGAZINES', textsize=TEXTSIZE,
+                text='SHOW MAGAZINES', maxsize=TEXTSIZE,
                 widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='else excluding files marked as Magazines',
                 kwargs = dict(type='show_magazines'),

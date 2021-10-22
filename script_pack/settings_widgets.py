@@ -1382,7 +1382,6 @@ class UniversalSettingsArea(GOD):
             settingscanvas.widgets.append(dictionary)
 
             self.delayed_init(dictionary)
-
         return settingscanvas
 
     def make_this_into_LCDrow(self, headersdictionary, toolsheight=30, canvaswidth=300, linewidth=1):
@@ -1501,7 +1500,10 @@ class UniversalSettingsArea(GOD):
             t.pos(label.lineedit, width=label.lineedit, add=-(margin+linewidth))
 
             if postcorrect_font and 'textlabel' in dir(label):
-                t.correct_broken_font_size(label.textlabel)
+                if 'textsize' in dictionary:
+                    t.correct_broken_font_size(label.textlabel, maxsize=dictionary['textsize'])
+                else:
+                    t.correct_broken_font_size(label.textlabel)
 
             self.delayed_init(dictionary, force=True)
 

@@ -58,7 +58,7 @@ default_dict = dict(
         show_ratings=dict(active=True, value=None),
 
         shade_surroundings=dict(active=True, value=None),
-
+        scan_50_now=dict(active=True, value=10),
 
     ),
     stylesheets=dict(

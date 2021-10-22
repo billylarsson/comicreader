@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-PROGRAM = 'Python Comicreader'
+PROGRAM = 'Python Comicreader v2.2'
 
 import os
 import platform
