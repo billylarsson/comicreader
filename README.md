@@ -2,8 +2,13 @@
 
 ![Screenshot from 2021-10-08 21-22-22](https://user-images.githubusercontent.com/59517785/136614432-e6602d61-dc0a-4c6a-a251-6c847edd9698.png)
 
-<h3>If you're on Windows i assume all you need to do is to run Comicreader.exe. Goto the RELEASE-area and download the zipfile.</h3>
+<h3>If you're on Windows i assume all you need to do is to run Comicreader.exe. 
+  
+  Goto the RELEASE-area to download the zipped file containing with the executable</h3>
 
+* Batch Comicvine auto pairing added
+* Batch WEBP conversion added
+* Added opt-in so that it pairs with Comicvine servers while converting to WEBP
 
 
 INSTALLATION:
