@@ -1,7 +1,7 @@
-from PIL              import  Image
+from PIL             import Image
+from bscripts.tricks import tech as t
 import os
 import shutil
-from bscripts.tricks import tech as t
 
 class ImageComparer:
     def __init__(self, image_one, image_two, grayscale=False, delete=True):

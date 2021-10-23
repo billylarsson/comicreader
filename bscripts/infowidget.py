@@ -1,12 +1,11 @@
-from bscripts.file_handling import unzipper
-from bscripts.compare_images import ImageComparer
-from bscripts.cv_guess import GUESSComicVineID
 from PyQt5                        import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore                 import QPoint, Qt
 from PyQt5.QtGui                  import QKeySequence, QPixmap
 from PyQt5.QtWidgets              import QShortcut
 from bscripts.comic_drawing       import ComicWidget, Cover, PAGE
 from bscripts.comicvine_stuff     import comicvine
+from bscripts.compare_images      import ImageComparer
+from bscripts.cv_guess            import GUESSComicVineID
 from bscripts.database_stuff      import DB, sqlite
 from bscripts.file_handling       import FileArchiveManager
 from bscripts.file_handling       import check_for_pdf_assistance
@@ -14,6 +13,7 @@ from bscripts.file_handling       import concurrent_cbx_to_webp_convertion
 from bscripts.file_handling       import concurrent_pdf_to_webp_convertion
 from bscripts.file_handling       import extract_from_zip_or_pdf
 from bscripts.file_handling       import get_thumbnail_from_zip_or_database
+from bscripts.file_handling       import unzipper
 from bscripts.tricks              import tech as t
 from script_pack.preset_colors    import *
 from script_pack.settings_widgets import ExecutableLookCheckable
@@ -50,13 +50,14 @@ class INFOCoverWidget(Cover):
             self.parent.quit()
 
 class INFOWidget(ComicWidget):
-    def __init__(self, place, parent, main, type, database, scan50=False):
+    def __init__(self, place, parent, main, type, database, scan50=False, auto_init=True, force_offline=False):
         super().__init__(place=place, main=main, type=type)
 
         self.parent = parent
         self.database = database
         self.relatives = []
         self.scan50 = scan50
+        self.force_offline = force_offline
 
         if scan50:
             self.signal = t.signals('infowidget_signal_' + str(self.database[0]), reset=False)
@@ -77,8 +78,8 @@ class INFOWidget(ComicWidget):
         self.signal.pickrelatives.connect(self.pick_relatives)
         self.signal.volumelabel.connect(self.init_volumes_label)
 
-        self.post_init()
-
+        if auto_init:
+            self.post_init()
 
     def make_cover(self, coverfile=None, cover_height=500):
         """
@@ -606,6 +607,7 @@ class INFOWidget(ComicWidget):
                 def __init__(self, *args, **kwargs):
                     super().__init__(*args, **kwargs)
                     self.activation_toggle(force=False)
+                    self.parent.convert_to_webp_button = self
 
                 def post_init(self):
                     self.button.setMouseTracking(True)
@@ -811,6 +813,7 @@ class INFOWidget(ComicWidget):
                         extravar=dict(
                             database=self.database,
                             local_path_widget=self.local_path_widget,
+                            parent=self,
                         ),
                     ))
             ]
@@ -1087,6 +1090,7 @@ class INFOWidget(ComicWidget):
             class PAIRButton(FolderSettingsAndGLobalHighlight):
                 def __init__(self, *args, **kwargs):
                     super().__init__(*args, **kwargs)
+                    self.force_offline = False # stops a re-init prevention, used by webp-batch conversion
 
                 def post_init(self):
                     self.lineedit.setValidator(QtGui.QIntValidator(0,2147483647))
@@ -1120,10 +1124,13 @@ class INFOWidget(ComicWidget):
                         self.textlabel.setText('PAIRED')
                         t.correct_broken_font_size(self.textlabel)
                         self.database = sqlite.refresh_db_input('comics', self.database)
-                        self.manage_save_button(delete=True)
+
                         if args and args[0].button() == 2: # hack that doesnt re_init
                             return
+                        elif self.force_offline:
+                            return
                         else:
+                            self.refresh_volume_id(self.database)
                             self.re_init(self.database)
 
                 def create_deletebutton(self):
@@ -1140,12 +1147,15 @@ class INFOWidget(ComicWidget):
 
             def use_deletebutton_to_signal_when_cv_done(self, d):
                 if 'delete_button' in dir(d[0]['label']):
-                    def signal_jobs_done():
-                        t.style(self.pair_delete_button, background=DARKRED)
 
                     self.pair_delete_button = d[0]['label'].delete_button
                     t.style(self.pair_delete_button, background='red')
-                    self.signal.pair_deletebutton_jobs_done.connect(signal_jobs_done)
+
+                    def flash_color():
+                        if 'pair_delete_button' in dir(self):
+                            t.style(self.pair_delete_button, background=DARKRED)
+
+                    self.signal.pair_deletebutton_jobs_done.connect(flash_color)
 
             set7 = UniversalSettingsArea(self,extravar=dict(fortifyed=True))
             t.pos(set7, height=36, above=set6, y_margin=3)
@@ -1162,15 +1172,18 @@ class INFOWidget(ComicWidget):
                         extravar=dict(
                             database=self.database,
                             re_init=self.re_init,
+                            refresh_volume_id=self.refresh_volume_id,
                     )))
             ]
             set7.make_this_into_folder_settings(d, toolsheight=30, extend_le_til=set6, labelwidth=80)
             set7.expand_me(set7.blackgrays)
             use_deletebutton_to_signal_when_cv_done(self, d)
+
             self.pair_button = set7
             self.pair_lineedit = d[0]['label'].lineedit
             self.pair_textlabel = d[0]['label'].textlabel
             self.pair_label = d[0]['label']
+
             return set7
 
         expandlater = []
@@ -1212,6 +1225,7 @@ class INFOWidget(ComicWidget):
         self.small_info_widgets = expandlater
 
         t.start_thread(self.update_comicvine, name='comicvine', threads=1)
+
         self.suggest_comic_id()
 
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
@@ -1375,6 +1389,7 @@ class INFOWidget(ComicWidget):
             return
 
         rv = self.create_center_candidate_data(candidates)
+
         if rv:
             self.signal.buildrelative.emit(rv)
             self.signal.pickrelatives.emit(candidates)
@@ -1627,6 +1642,8 @@ class INFOWidget(ComicWidget):
         self.position_relatives()
 
     def update_comicvine(self):
+        if self.force_offline:
+            return
 
         if self.refresh_volume_id(self.database):
             self.database = sqlite.refresh_db_input('comics', self.database)
@@ -1889,8 +1906,6 @@ class INFOWidget(ComicWidget):
         self.create_draw_all_volumes_button()
         self.volumeslabel.position_volumes()
 
-        # cvsignal = t.signals('cv_jobs_done' + str(self.database[0]))
-        # cvsignal.finished.emit()
         self.signal.pair_deletebutton_jobs_done.emit()
 
     def create_draw_all_volumes_button(self):
@@ -1921,6 +1936,29 @@ class INFOWidget(ComicWidget):
             ))
 
     def draw_suggested_comic(self, candidates):
+        class CVResultTitle(GLOBALDeactivate):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignHCenter)
+                self.setFrameShape(QtWidgets.QFrame.Box)
+                self.setLineWidth(1)
+
+                t.pos(self, width=label, height=20, above=label, y_margin=1, color='gray')
+                self.setText('COMICVINE SUGGESTION')
+                t.correct_broken_font_size(self)
+                self.next = False
+
+            def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+                if self.next:
+                    self.draw_suggested_comic(self.candidates)
+                else:
+                    signal = t.signals()
+                    cv = GUESSComicVineID(database=self.database, signal=signal)
+                    self.candidate_label.close()
+                    self.close()
+                    self.draw_free_search_thingey(cv)
+
+
         class Candidate(GOD):
             def __init__(self, *args, **kwargs):
                 super().__init__(type='_irrelevant', *args, **kwargs)
@@ -1928,20 +1966,11 @@ class INFOWidget(ComicWidget):
                 self.labels = []
 
             def next_candidate_button(self, fn, candidatelist):
-                class NEXTCANDIATE(GOD):
-                    def __init__(self, place, *args, **kwargs):
-                        super().__init__(place=place, *args, **kwargs)
-                        t.pos(self, inside=place, margin=1)
-                        t.style(self, background='transparent')
-                    def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-                        self.draw_suggested_comic(self.candidates)
-
                 if 'title' in dir(self):
                     self.title.setText('CLICK ME')
-                    self.next = NEXTCANDIATE(self.title, type='_nextcandidatebtn',
-                                         extravar=dict(
-                                            draw_suggested_comic=fn,
-                                            candidates=candidatelist))
+                    self.title.candidates = candidatelist
+                    self.title.draw_suggested_comic = fn
+                    self.title.next = True
 
             def show_diffdata(self, work):
 
@@ -2051,23 +2080,17 @@ class INFOWidget(ComicWidget):
             t.style(label, background='gray', color='gray')
             label.setPixmap(pixmap)
 
-            title = GLOBALDeactivate(self, type='_cvsuggesttitle')
-            title.setAlignment(QtCore.Qt.AlignVCenter|QtCore.Qt.AlignHCenter)
-            title.setFrameShape(QtWidgets.QFrame.Box)
-            title.setLineWidth(1)
-
-            title = t.pos(title, width=label, height=20, above=label, y_margin=1)
-            t.style(title, color='gray')
-            title.setText('COMICVINE SUGGESTION')
-            t.correct_broken_font_size(title)
+            title = CVResultTitle(self, type='_cvsuggesttitle')
 
             if t.config('comicvine_show_suggestion_details'):
                 label.show_diffdata(work)
 
             label.candidates = candidates
-
             self.suggested_candidate = label
             self.suggested_candidate_title = title
+            self.suggested_candidate_title.candidate_label = label
+            self.suggested_candidate_title.database = self.database
+            self.suggested_candidate_title.draw_free_search_thingey = self.draw_free_search_thingey
 
             if t.config('comicvine_autopair_threshold'):
                 if t.config('comicvine_autopair_threshold', curious=True) < work['total'] * 100:
@@ -2085,12 +2108,14 @@ class INFOWidget(ComicWidget):
             if len(candidates) > 1:
                 if lower and len([x for x in candidates if x['total'] * 100 >= lower]) < 2:
                     break
-
                 label.next_candidate_button(self.draw_suggested_comic, candidates)
             break
 
     def suggest_comic_id(self):
-        if self.database[DB.comics.comic_id]:
+        if self.force_offline:
+            return
+
+        elif self.database[DB.comics.comic_id]:
             return
 
         elif self.database[DB.comics.type] != DB.comics.comic: # not comic as a type
@@ -2098,6 +2123,32 @@ class INFOWidget(ComicWidget):
 
         elif not t.config('comicvine_suggestion'):
             return
+
+        def signal_guess_finished(cvwidget):
+            t.style(self.local_path_widget.delete_button, background=DARKRED)
+            if not cvwidget.found_candidate and t.config('dev_mode'):
+                self.draw_free_search_thingey(cvwidget)
+
+        t.style(self.local_path_widget.delete_button, background='red')
+        self.signal.candidates.connect(self.draw_suggested_comic)
+        self.signal.path_deletebutton_jobs_done.connect(signal_guess_finished)
+        t.start_thread(GUESSComicVineID,
+                       worker_arguments=(self.database, True, self.signal,), name='comicvine', threads=1)
+
+    def draw_free_search_thingey(self, cvwidget):
+        if 'cv_searcher' in dir(self):
+            return
+
+        self.cv_searcher = t.pos(new=self, width=self.pair_button, height=30, sub=2)
+        self.cv_searcher.parent = self
+        self.title = t.pos(new=self.cv_searcher, inside=self.cv_searcher)
+        self.title.setText('MANUAL COMICVINE STRING')
+        self.title.setAlignment(QtCore.Qt.AlignVCenter|QtCore.Qt.AlignHCenter)
+        self.title.setFrameShape(QtWidgets.QFrame.Box)
+        self.title.setLineWidth(1)
+        self.title.setToolTip('DEV-MODE thingey... edit and press enter!')
+        t.style(self.title, background='rgba(20,20,40,200)', color='white')
+        t.correct_broken_font_size(self.title)
 
         class FREESearchLineEdit(QtWidgets.QLineEdit):
             def __init__(self, place, value, type, rlabel, fn_search, backplate):
@@ -2121,6 +2172,11 @@ class INFOWidget(ComicWidget):
                 t.pos(self.rlabel, height=self, right=self.width())
                 t.correct_broken_font_size(self.rlabel, y_margin=4)
 
+        def kill(*args, **kwargs):
+            if 'cv_searcher' in dir(self):
+                self.cv_searcher.close()
+                del self.cv_searcher
+
         def manual_search_comcivine(self, backplate):
             cv = GUESSComicVineID(self.database, autoinit=False, signal=self.signal)
 
@@ -2135,54 +2191,23 @@ class INFOWidget(ComicWidget):
             t.style(self.local_path_widget.delete_button, background='red')
             t.start_thread(cv.highjack_search)
 
-        def draw_free_search_thingey(self, cvwidget):
-            if 'cv_searcher' in dir(self):
-                return
+        self.signal.candidates.connect(lambda: kill)
 
-            self.cv_searcher = t.pos(new=self, width=self.pair_button, height=30, sub=2)
-            self.cv_searcher.parent = self
-            self.title = t.pos(new=self.cv_searcher, inside=self.cv_searcher)
-            self.title.setText('MANUAL COMICVINE STRING')
-            self.title.setAlignment(QtCore.Qt.AlignVCenter|QtCore.Qt.AlignHCenter)
-            self.title.setFrameShape(QtWidgets.QFrame.Box)
-            self.title.setLineWidth(1)
-            self.title.setToolTip('DEV-MODE thingey... edit and press enter!')
-            t.style(self.title, background='rgba(20,20,40,200)', color='white')
-            t.correct_broken_font_size(self.title)
+        lineedits = dict(volumename='VOL.NAME', issuenumber='ISSUE.NUM', year='COVER.YEAR')
+        for count, (k,v) in enumerate(lineedits.items()):
 
-            def kill(*args, **kwargs):
-                if 'cv_searcher' in dir(self):
-                    self.cv_searcher.close()
-                    del self.cv_searcher
+            lineedit = FREESearchLineEdit(self.cv_searcher, value=getattr(cvwidget, k), type=v, rlabel=v,
+                                          fn_search=manual_search_comcivine, backplate=self.cv_searcher)
 
-            self.signal.candidates.connect(lambda: kill)
+            setattr(self.cv_searcher, k, lineedit)
+            t.pos(getattr(self.cv_searcher, k), inside=self.cv_searcher)
 
-            lineedits = dict(volumename='VOL.NAME', issuenumber='ISSUE.NUM', year='COVER.YEAR')
-            for count, (k,v) in enumerate(lineedits.items()):
+            top = (self.cv_searcher.height() + 2) * (count+1)
+            t.pos(getattr(self.cv_searcher, k), top=top)
 
-                lineedit = FREESearchLineEdit(self.cv_searcher, value=getattr(cvwidget, k), type=v, rlabel=v,
-                                              fn_search=manual_search_comcivine, backplate=self.cv_searcher)
-
-                setattr(self.cv_searcher, k, lineedit)
-                t.pos(getattr(self.cv_searcher, k), inside=self.cv_searcher)
-
-                top = (self.cv_searcher.height() + 2) * (count+1)
-                t.pos(getattr(self.cv_searcher, k), top=top)
-
-                if count+1 == len(lineedits):
-                    h = getattr(self.cv_searcher, k).geometry().bottom() + 1
-                    t.pos(self.cv_searcher, height=h, above=self.pair_button, y_margin=2)
-
-        def signal_guess_finished(cvwidget):
-            t.style(self.local_path_widget.delete_button, background=DARKRED)
-            if not cvwidget.found_candidate and t.config('dev_mode'):
-                draw_free_search_thingey(self, cvwidget)
-
-        t.style(self.local_path_widget.delete_button, background='red')
-        self.signal.candidates.connect(self.draw_suggested_comic)
-        self.signal.path_deletebutton_jobs_done.connect(signal_guess_finished)
-        t.start_thread(GUESSComicVineID,
-                       worker_arguments=(self.database, True, self.signal,), name='comicvine', threads=1)
+            if count+1 == len(lineedits):
+                h = getattr(self.cv_searcher, k).geometry().bottom() + 1
+                t.pos(self.cv_searcher, height=h, above=self.pair_button, y_margin=2)
 
     def quit(self):
         self.signal.disconnect()

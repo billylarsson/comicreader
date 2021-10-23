@@ -13,12 +13,12 @@ import pickle
 import platform
 import random
 import shutil
+import ssl
 import sys
 import tempfile
 import time
 import traceback
 import uuid
-import ssl
 
 default_dict = dict(
     settings=dict(
@@ -59,6 +59,7 @@ default_dict = dict(
 
         shade_surroundings=dict(active=True, value=None),
         scan_50_now=dict(active=True, value=10),
+        webp_batch=dict(active=True, value=10),
 
     ),
     stylesheets=dict(

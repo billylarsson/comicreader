@@ -1,27 +1,21 @@
+from PyQt5                        import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore                 import QPoint, Qt
+from PyQt5.QtGui                  import QKeySequence
+from PyQt5.QtWidgets              import QShortcut
+from bscripts.comic_drawing       import ComicWidget
+from bscripts.database_stuff      import DB, sqlite
+from bscripts.file_handling       import scan_for_new_comics
+from bscripts.settings_area       import TOOLSettings
+from bscripts.tricks              import tech as t
+from bscripts.widgets             import TOOLBatch, TOOLCVIDnoID, TOOLComicvine
+from bscripts.widgets             import TOOLFolders, TOOLMaxiMini
+from bscripts.widgets             import TOOLPublisher, TOOLQuit, TOOLRank
+from bscripts.widgets             import TOOLReading, TOOLSearch, TOOLSort
+from bscripts.widgets             import TOOLWEBP
 from script_pack.settings_widgets import GOD
-from PyQt5                   import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore            import QPoint, Qt
-from PyQt5.QtGui             import QKeySequence
-from PyQt5.QtWidgets         import QShortcut
-from bscripts.comic_drawing  import ComicWidget
-from bscripts.database_stuff import DB, sqlite
-from bscripts.file_handling  import scan_for_new_comics
-from bscripts.settings_area  import TOOLSettings
-from bscripts.tricks         import tech as t
-from bscripts.widgets        import TOOLBatch, TOOLComicvine, TOOLFolders
-from bscripts.widgets        import TOOLMaxiMini, TOOLPublisher, TOOLQuit
-from bscripts.widgets        import TOOLRank, TOOLReading, TOOLSearch, TOOLSort,TOOLCVIDnoID
-from bscripts.widgets        import TOOLWEBP
 import os
 import platform
 import time
-
-# query1 = 'update comics set comic_id = (?) where id is (?)'
-# query2 = 'update comics set publisher_id = (?) where id is (?)'
-# query3 = 'update comics set volume_id = (?) where id is (?)'
-#
-# for i in [query1, query2, query3]:
-#     sqlite.execute(i, values=(None, 8529,))
 
 class LSComicreaderMain(QtWidgets.QMainWindow):
     def __init__(self, primary_screen):
@@ -160,7 +154,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
             dict(config='tool_webp', widget=TOOLWEBP, text='WEBP'),
             dict(config='tool_ranking', widget=TOOLRank, text='QUICK SHORTCUTS'),
             dict(config='tool_comicvine', widget=TOOLComicvine, text='COMICVINE'),
-            dict(config='tool_batch', widget=TOOLBatch, text='BATCH'),
+            dict(config='tool_batch', widget=TOOLBatch, text='QUE'),
         ]
 
         def size_to_text(label, text):

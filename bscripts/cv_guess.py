@@ -151,7 +151,7 @@ class GUESSComicVineID:
             if self.fname.find(i) > -1:
                 self.fname = self.fname[0:self.fname.find(i)]
 
-        replacedict = {',': " ", "'s": "", "'": "", "  ": " "}
+        replacedict = {"'re": "", ',': " ", "'s": "", "'": "", "  ": " "}
         for k,v in replacedict.items():
             self.fname = self.fname.replace(k,v)
         self.fname = self.fname.replace('  ', ' ')
@@ -311,7 +311,7 @@ class GUESSComicVineID:
                 vol_rv = fourth_search(self, name)
             return vol_rv
 
-        def paginate_results(self, vol_rv, times=10):
+        def paginate_results(self, vol_rv, times=20):
             for offset in [x * 100 for x in range(1, times)]:
                 add_vol = comicvine(search='volumes', filters=self.filters, offset=offset)
                 if add_vol:

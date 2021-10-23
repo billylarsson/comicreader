@@ -1,4 +1,3 @@
-import random
 from PyQt5                        import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore                 import QPoint
 from PyQt5.QtGui                  import QColor, QPen
@@ -6,12 +5,16 @@ from bscripts.comicvine_stuff     import comicvine
 from bscripts.database_stuff      import DB, sqlite
 from bscripts.tricks              import tech as t
 from script_pack.preset_colors    import *
-from script_pack.settings_widgets import CheckableLCD, ExecutableLookCheckable, CheckableAndGlobalHighlight
+from script_pack.settings_widgets import CheckableAndGlobalHighlight
+from script_pack.settings_widgets import CheckableLCD, ExecutableLookCheckable
 from script_pack.settings_widgets import FolderSettingsAndGLobalHighlight
 from script_pack.settings_widgets import GLOBALDeactivate, GOD
 from script_pack.settings_widgets import HighlightRadioBoxGroup, POPUPTool
 from script_pack.settings_widgets import UniversalSettingsArea
+from bscripts.file_handling import FileArchiveManager, concurrent_cbx_to_webp_convertion
+import pickle
 import os
+import random
 import sys
 
 TEXTSIZE = 14
@@ -1451,9 +1454,11 @@ class TOOLComicvine(POPUPTool):
                     i.diffdata = []
                     for d in cycle:
                         text = d['text']
-                        value = round(d['value'] * 100)
-                        if not value:
+
+                        if not d['value']:
                             continue
+
+                        value = round(d['value'] * 100)
 
                         if not i.diffdata:
                             label = t.pos(new=i, width=i.cover, height=i.height() * 0.05, bottom=i.cover, left=i.cover)
@@ -1461,39 +1466,50 @@ class TOOLComicvine(POPUPTool):
                             label.fontsize = t.correct_broken_font_size(label)
                             w = label.fontMetrics().boundingRect(label.text()).width()
                             t.pos(label, width=w * 2.4)
-                            prelabel = label
                         else:
                             prelabel = i.diffdata[-1]
                             label = t.pos(new=i, coat=prelabel, above=prelabel, y_margin=1)
                             label.setText(text)
 
+                        label.value = value
                         i.diffdata.append(label)
 
-                        rlabel = t.pos(new=label, inside=label, width=label, sub=3)
-                        rlabel.setAlignment(QtCore.Qt.AlignRight)
-                        rlabel.setText(str(value) + '%')
+                        label.rlabel = t.pos(new=label, inside=label, width=label, sub=3)
+                        label.rlabel.setAlignment(QtCore.Qt.AlignRight)
+                        label.rlabel.setText(str(value) + '%')
 
                         t.style(label,
                                 background='rgba(20,20,20,210)', color='rgb(180,180,190)', font=i.diffdata[0].fontsize)
-                        t.style(rlabel, background='transparent', color='gray', font=i.diffdata[0].fontsize)
+                        t.style(label.rlabel, background='transparent', color='gray', font=i.diffdata[0].fontsize)
 
                         label.setFrameShape(QtWidgets.QFrame.Box)
                         label.setLineWidth(1)
 
                     header = t.pos(new=i, coat=label, height=label, add=10, above=label, y_margin=2)
-                    t.style(header, background='rgba(20,20,20,210)', color='rgb(180,180,190)')
                     header.setAlignment(QtCore.Qt.AlignHCenter|QtCore.Qt.AlignVCenter)
                     header.setFrameShape(QtWidgets.QFrame.Box)
                     header.setLineWidth(2)
 
-                    for d in cycle:
-                        if d['text'] == 'TOTAL':
+                    for label in i.diffdata:
+                        if label.text() == 'TOTAL':
                             if t.config('comicvine_autopair_threshold'):
-                                if d['value'] * 100 >= t.config('comicvine_autopair_threshold'):
+                                if label.value >= t.config('comicvine_autopair_threshold'):
+                                    t.style(label,
+                                            background='rgba(20,20,20,210)',
+                                            color='lightGreen',
+                                            font=i.diffdata[0].fontsize
+                                            )
+                                    t.style(label.rlabel,
+                                            background='transparent',
+                                            color='green',
+                                            font=i.diffdata[0].fontsize
+                                            )
                                     header.setText('AUTO-PAIRED')
+                                    t.style(header, background='rgba(20,110,20,250)', color='white')
                                     break
 
                             header.setText('PROPOSED ONLY')
+                            t.style(header, background='rgba(20,20,20,210)', color='rgb(180,180,190)')
 
                     t.correct_broken_font_size(header)
 
@@ -1680,6 +1696,131 @@ class TOOLCVIDnoID(GOD):
         self.labels[-1].fall_back_to_default(self.labels, 'show_both')
 
 class TOOLWEBP(POPUPTool):
+
+
+    class WEBPBatchConverter(GLOBALDeactivate, ExecutableLookCheckable):
+        def post_init(self):
+            self.button.setMouseTracking(True)
+            self.textlabel.setMouseTracking(True)
+
+            self.directives['activation'] = [
+                dict(object=self.textlabel, color='white'),
+                dict(object=self.button, background=BTN_SHINE, color=BTN_SHINE),
+            ]
+
+            self.directives['deactivation'] = [
+                dict(object=self.textlabel, color=BTN_SHADE),
+                dict(object=self.button, background=BTN_SHADE, color=BTN_SHADE),
+            ]
+
+        def special(self):
+            return True
+
+        @staticmethod
+        def webp_convertable_files(database):
+            if not database[DB.comics.file_contents]:
+                fa = FileArchiveManager(database=database, autoinit=False)
+                fa.make_database(path=database[DB.comics.local_path])
+                database = fa.database
+                if not database[DB.comics.file_contents]:
+                    return False
+
+            fd = pickle.loads(database[DB.comics.file_contents])
+            if 'good_files' not in fd or not fd['good_files']:
+                return False
+
+            for i in fd['good_files']:
+                loc = t.separate_file_from_folder(i)
+                if loc.ext.lower() != 'webp':
+                    return True
+
+            return False
+
+        def button_clicked(self):
+            self.que = sqlite.execute('select * from comics', all=True)
+            if self.que:
+                self.start_next_job()
+
+        def distant_start_conversion(self):
+            if 'convert_to_webp_button' in dir(self.infowidget):
+                self.infowidget.pair_label.force_offline = True # not sure if there's a re-init somewere, lazy
+                self.infowidget.convert_to_webp_button.button_clicked()
+            else:
+                self.infowidget.quit()
+                del self.infowidget
+                self.start_next_job()
+
+        def show_previous_work_close_that_infowidget(self):
+            if 'infowidget' in dir(self):
+                db = sqlite.refresh_db_input('comics', self.infowidget.database)
+                self.main.draw_list_comics = [dict(database=db, usable=None, used=False, count=0)]
+                self.main.draw_from_comiclist()
+                self.infowidget.quit()
+                del self.infowidget
+
+        def setup_new_working_signal(self, database):
+            file = database[DB.comics.local_path]
+            signalname = '_cbx_webp_convertion_' + file
+            self.webp_convertion_signal = t.signals(signalname, reset=True)
+            self.webp_convertion_signal.error.connect(self.start_next_job)
+            self.webp_convertion_signal.finished.connect(self.start_next_job)
+
+        def init_infowidget(self, database):
+            from bscripts.infowidget import INFOWidget
+            if t.config('pair_while_converting'):
+                offline = False
+            else:
+                offline = True
+
+            self.infowidget = INFOWidget(
+                self.main.back, self, self.main, type='info_widget', database=database, force_offline=offline)
+
+            t.pos(self.infowidget, bottom=self.main.back.height(), right=self.main.back)
+
+        def start_next_job(self, *args, **kwargs):
+            t.start_thread(self.main.dummy, worker_arguments=1, finished_function=self.stack_empty)
+
+        def stack_empty(self):
+            for count in range(len(self.que)-1,-1,-1):
+                database = self.que[count]
+                self.que.pop(count)
+
+                if self.jobs < 1 or not database:
+                    self.show_previous_work_close_that_infowidget()
+                    self.activation_toggle(force=False, save=False)
+                    return
+
+                loc = t.separate_file_from_folder(database[DB.comics.local_path])
+                if loc.ext.lower() == 'pdf':
+                    continue
+
+                elif not os.path.exists(loc.full_path):
+                    continue
+
+                elif not self.webp_convertable_files(database):
+                    continue
+
+                self.jobs -= 1
+
+                self.show_previous_work_close_that_infowidget()
+                self.setup_new_working_signal(database=database)
+                self.init_infowidget(database=database)
+
+                t.start_thread(
+                    self.main.dummy,
+                    worker_arguments=1,
+                    threads=1,
+                    finished_function=self.distant_start_conversion,
+                )
+                break
+
+        def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
+            self.activation_toggle()
+            if self.activated:
+                self.main.reset_widgets('main')
+                self.jobs = t.config('webp_batch') or 10
+                self.button_clicked()
+
     def show_webp_settings(self):
         d1 = [
             dict(
@@ -1738,18 +1879,65 @@ class TOOLWEBP(POPUPTool):
                 tooltip='delete source file once convertion is complete',
                 kwargs=dict(
                     type='webp_delete_source_file'
-            ))
+            )),
           ]
+
+        d4 = [
+            dict(
+                text='PAIR WHILE CONVERTING',
+                textsize=TEXTSIZE,
+                widget=CheckableAndGlobalHighlight,
+                post_init=True,
+                tooltip='update comic id from comicvine servers while converting to WEBP',
+                kwargs=dict(
+                    type='pair_while_converting'
+                )),
+        ]
 
         self.blackgray = UniversalSettingsArea(self.main, activation_toggle=self.activation_toggle)
         lcd = self.blackgray.make_this_into_LCDrow(d1, canvaswidth=200)
         header = self.blackgray.make_header(title='WEBP GLOBAL SETTINGS', width=lcd.width())
         chk = self.blackgray.make_this_into_checkable_buttons(d2, canvaswidth=250)
+        convertpair = self.blackgray.make_this_into_checkable_buttons(d4, canvaswidth=331)
 
         t.pos(lcd, below=header, y_margin=3)
         t.pos(chk, below=lcd, y_margin=5)
         t.pos(lcd, right=chk)
+        t.pos(convertpair, below=chk, y_margin=5)
         t.pos(header, right=chk)
+
+        # todo lazy fix, not nessesary to fix but this is very ugly codewise >
+        d3 = [
+            dict(
+                text='WEBP BATCH CONVERTER',
+                textsize=TEXTSIZE,
+                widget=self.WEBPBatchConverter,
+                post_init=True,
+                kwargs=dict(
+                    type='_webp_batch'
+            ))
+        ]
+        webpbatch = self.blackgray.make_this_into_checkable_buttons(d3, canvaswidth=280)
+        t.pos(webpbatch, below=convertpair)
+        webplcd_dict = [
+            dict(
+                text='',
+                textsize=TEXTSIZE,
+                max_value=999,
+                min_value=1,
+                kwargs=dict(
+                    type='webp_batch',
+                    extravar=dict(main=self.main),
+                )),
+        ]
+        webplcd = self.blackgray.make_this_into_LCDrow(webplcd_dict, canvaswidth=330)
+        t.pos(webplcd, top=webpbatch, right=330)
+        tmp = t.pos(new=webpbatch, background='black', width=2, height=webpbatch, right=webpbatch)
+        t.pos(new=tmp, size=[2, 1], move=[0, 1], background='gray')
+        t.pos(new=tmp, size=[2, 1], move=[0, tmp.height()-2], background='gray')
+        webpbatch.raise_()
+        # todo lazy fix, not nessesary to fix but this is very ugly codewise <
+
         t.pos(self.blackgray, below=self, left=self, y_margin=10)
         self.blackgray.expand_me([x for x in self.blackgray.blackgrays])
 
@@ -1762,4 +1950,7 @@ class TOOLWEBP(POPUPTool):
         elif 'blackgray' in dir(self):
             self.blackgray.close()
             del self.blackgray
+
+
+
 
