@@ -37,7 +37,9 @@ RUNNING:
 
 1a: Unpack the zipfile and run Comicreader.exe (Windows only)
 
-1b: start the program from a command prompt, from its unpacked directory type: python launcher.py 
+1b: start the program from a command prompt, from its unpacked directory type: python comicreader.py 
 the first thing you should do is to enter the CONFIG/SETTINGS area and provide the folders you want it to scan for comics from.
 click the update library button and then you can freeley search for comics in the search bar, right clicking a comic opens a window where you can do small things to the comic such as give it a rating, convert it to WEBP, rename the file, delete the file so on so forth.
 left clicking the comic starts reading it, pressing left/right to change page, change reading modes by pressing 1,2,3,4... right click for bookmarks.
+
+NOTE: I dont own a copy of Windows myself, therefore testing for Windows during developement is very limited, please report unplesant behavior.
