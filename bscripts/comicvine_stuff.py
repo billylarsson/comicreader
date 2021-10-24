@@ -43,33 +43,39 @@ class CVConnect:
         if not self.url:
             self.url = 'https://comicvine.gamespot.com/api'
         else:
-            return # already been generated
+            return  # already been generated
 
-        for i in self.subdirs:
+        def add_key_sort_offset(self):
+            self.url += '?api_key=' + t.config('comicvine_key')
+            self.url += '&sort=' + sortclass.sort_mode + ':' + sortclass.asc_desc + '&format=json'
+            if sortclass.offset:
+                self.url += '&offset=' + str(sortclass.offset)
 
-            if self.url[-1] != '/':
-                self.url += '/'
+        def add_subdirs(self):
+            for i in self.subdirs:
+                if self.url[-1] != '/':
+                    self.url += '/'
 
-            if i[0] == '/':
-                self.url += i[1:]
-
-            else:
-                self.url += i
-
-        self.url += '?api_key=' + t.config('comicvine_key')
-
-        for count, d in enumerate(self.filters):
-            for key, value in d.items():
-                if count == 0:
-                    self.url += '&filter='
+                if i[0] == '/':
+                    self.url += i[1:]
                 else:
-                    self.url += ','
+                    self.url += i
 
-                self.url += key + ':' + value
+        def add_filters(self):
+            for count, d in enumerate(self.filters):
+                for key, value in d.items():
+                    if count == 0:
+                        self.url += '&filter='
+                    elif len(key + ':' + value) + len(self.url) > 2048:
+                        break
+                    else:
+                        self.url += ','
 
-        self.url += '&sort=' + sortclass.sort_mode + ':' + sortclass.asc_desc + '&format=json'
-        if sortclass.offset:
-            self.url += '&offset=' + str(sortclass.offset)
+                    self.url += key + ':' + value
+
+        add_subdirs(self)
+        add_key_sort_offset(self)
+        add_filters(self)
 
     def generate_filename(self, reuse=True, days=7, delete=False):
         if not self.filename:

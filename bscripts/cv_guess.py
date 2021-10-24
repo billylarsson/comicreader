@@ -234,13 +234,11 @@ class GUESSComicVineID:
     def judge_dredd(self, cloak=False, decloak=False):
         if cloak:
             if self.fname.upper().find('2000AD') != -1:
-                md5 = t.md5_hash_string('2000')
-                self.fname = self.fname.replace('2000', md5)
+                self.fname = self.fname.replace('2000', 'ÖÖÖÖ')
                 return True
 
         elif decloak:
-            md5 = t.md5_hash_string('2000')
-            self.fname = self.fname.replace(md5, '2000')
+            self.fname = self.fname.replace('ÖÖÖÖ', '2000')
 
     def standard_volumes_search(self, ignore_length=False):
         """
@@ -395,3 +393,4 @@ class GUESSComicVineID:
 
         self.emit_finished_signal()
         return False
+

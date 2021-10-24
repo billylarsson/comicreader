@@ -60,7 +60,7 @@ default_dict = dict(
         shade_surroundings=dict(active=True, value=None),
         scan_50_now=dict(active=True, value=10),
         webp_batch=dict(active=True, value=10),
-
+        pdf_batch=dict(active=True, value=10),
     ),
     stylesheets=dict(
         main=dict(active=True, value='background-color: rgb(15,15,15) ; color: white')

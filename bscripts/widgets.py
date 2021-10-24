@@ -11,7 +11,7 @@ from script_pack.settings_widgets import FolderSettingsAndGLobalHighlight
 from script_pack.settings_widgets import GLOBALDeactivate, GOD
 from script_pack.settings_widgets import HighlightRadioBoxGroup, POPUPTool
 from script_pack.settings_widgets import UniversalSettingsArea
-from bscripts.file_handling import FileArchiveManager, concurrent_cbx_to_webp_convertion
+from bscripts.file_handling import FileArchiveManager
 import pickle
 import os
 import random
@@ -1696,9 +1696,11 @@ class TOOLCVIDnoID(GOD):
         self.labels[-1].fall_back_to_default(self.labels, 'show_both')
 
 class TOOLWEBP(POPUPTool):
-
-
     class WEBPBatchConverter(GLOBALDeactivate, ExecutableLookCheckable):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.activation_toggle(force=False, save=False)
+
         def post_init(self):
             self.button.setMouseTracking(True)
             self.textlabel.setMouseTracking(True)
@@ -1740,11 +1742,13 @@ class TOOLWEBP(POPUPTool):
             self.que = sqlite.execute('select * from comics', all=True)
             if self.que:
                 self.start_next_job()
+            else:
+                self.activation_toggle(force=False, save=False)
 
-        def distant_start_conversion(self):
-            if 'convert_to_webp_button' in dir(self.infowidget):
+        def distant_start_conversion(self, variable='convert_to_webp_button'):
+            if variable in dir(self.infowidget):
                 self.infowidget.pair_label.force_offline = True # not sure if there's a re-init somewere, lazy
-                self.infowidget.convert_to_webp_button.button_clicked()
+                getattr(self.infowidget, variable).button_clicked()
             else:
                 self.infowidget.quit()
                 del self.infowidget
@@ -1758,9 +1762,9 @@ class TOOLWEBP(POPUPTool):
                 self.infowidget.quit()
                 del self.infowidget
 
-        def setup_new_working_signal(self, database):
+        def setup_new_working_signal(self, database, string='_cbx_webp_convertion_'):
             file = database[DB.comics.local_path]
-            signalname = '_cbx_webp_convertion_' + file
+            signalname = string + file
             self.webp_convertion_signal = t.signals(signalname, reset=True)
             self.webp_convertion_signal.error.connect(self.start_next_job)
             self.webp_convertion_signal.finished.connect(self.start_next_job)
@@ -1812,14 +1816,53 @@ class TOOLWEBP(POPUPTool):
                     threads=1,
                     finished_function=self.distant_start_conversion,
                 )
-                break
+                return
+
+            self.activation_toggle(force=False, save=False)
 
         def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-            self.activation_toggle()
+            if self.activated: # prevents multiple runs
+                return
+
+            self.activation_toggle(save=False)
             if self.activated:
                 self.main.reset_widgets('main')
-                self.jobs = t.config('webp_batch') or 10
+                self.jobs = t.config(self.type, curious=True) or 10
                 self.button_clicked()
+
+    class PDFBatchConverter(WEBPBatchConverter):
+        def stack_empty(self):
+            for count in range(len(self.que)-1,-1,-1):
+                database = self.que[count]
+                self.que.pop(count)
+
+                if self.jobs < 1 or not database:
+                    self.show_previous_work_close_that_infowidget()
+                    self.activation_toggle(force=False, save=False)
+                    return
+
+                loc = t.separate_file_from_folder(database[DB.comics.local_path])
+                if loc.ext.lower() != 'pdf':
+                    continue
+
+                elif not os.path.exists(loc.full_path):
+                    continue
+
+                self.jobs -= 1
+                self.show_previous_work_close_that_infowidget()
+                self.setup_new_working_signal(database=database, string='_pdf_convertion_')
+                self.init_infowidget(database=database)
+
+                t.start_thread(
+                    self.main.dummy,
+                    worker_arguments=1,
+                    threads=1,
+                    finished_function=self.distant_start_conversion,
+                    finished_arguments='convert_from_pdf_to_webp_button',
+                )
+                return
+
+            self.activation_toggle(force=False, save=False)
 
     def show_webp_settings(self):
         d1 = [
@@ -1909,12 +1952,12 @@ class TOOLWEBP(POPUPTool):
         # todo lazy fix, not nessesary to fix but this is very ugly codewise >
         d3 = [
             dict(
-                text='WEBP BATCH CONVERTER',
+                text='CBx BATCH CONVERTER',
                 textsize=TEXTSIZE,
                 widget=self.WEBPBatchConverter,
                 post_init=True,
                 kwargs=dict(
-                    type='_webp_batch'
+                    type='webp_batch'
             ))
         ]
         webpbatch = self.blackgray.make_this_into_checkable_buttons(d3, canvaswidth=280)
@@ -1936,6 +1979,37 @@ class TOOLWEBP(POPUPTool):
         t.pos(new=tmp, size=[2, 1], move=[0, 1], background='gray')
         t.pos(new=tmp, size=[2, 1], move=[0, tmp.height()-2], background='gray')
         webpbatch.raise_()
+        # todo lazy fix, not nessesary to fix but this is very ugly codewise <
+        # todo lazy fix, not nessesary to fix but this is very ugly codewise >
+        d6 = [
+            dict(
+                text='PDF BATCH CONVERTER',
+                textsize=TEXTSIZE,
+                widget=self.PDFBatchConverter,
+                post_init=True,
+                kwargs=dict(
+                    type='pdf_batch'
+            ))
+        ]
+        pdfbatch = self.blackgray.make_this_into_checkable_buttons(d6, canvaswidth=280)
+        t.pos(pdfbatch, below=webpbatch)
+        webplcd_dict = [
+            dict(
+                text='',
+                textsize=TEXTSIZE,
+                max_value=999,
+                min_value=1,
+                kwargs=dict(
+                    type='pdf_batch',
+                    extravar=dict(main=self.main),
+                )),
+        ]
+        pdflcd = self.blackgray.make_this_into_LCDrow(webplcd_dict, canvaswidth=330)
+        t.pos(pdflcd, top=pdfbatch, right=330)
+        tmp = t.pos(new=pdfbatch, background='black', width=2, height=pdfbatch, right=pdfbatch)
+        t.pos(new=tmp, size=[2, 1], move=[0, 1], background='gray')
+        t.pos(new=tmp, size=[2, 1], move=[0, tmp.height()-2], background='gray')
+        pdfbatch.raise_()
         # todo lazy fix, not nessesary to fix but this is very ugly codewise <
 
         t.pos(self.blackgray, below=self, left=self, y_margin=10)

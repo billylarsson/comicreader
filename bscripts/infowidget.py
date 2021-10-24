@@ -436,6 +436,7 @@ class INFOWidget(ComicWidget):
                 def __init__(self, *args, **kwargs):
                     super().__init__(*args, **kwargs)
                     self.activation_toggle(force=False)
+                    self.parent.convert_from_pdf_to_webp_button = self
 
                 def post_init(self):
                     self.button.setMouseTracking(True)
@@ -1106,7 +1107,7 @@ class INFOWidget(ComicWidget):
 
                 def delete_button_mousePressEvent(self, *args, **kwargs):
                     for i in ['comic_id', 'volume_id', 'publisher_id']:
-                        query = f'update comics set {i} = (?) where id is (?)'
+                        query = f'update comics set {i} = (?) where id is (?)' # yes i know
                         sqlite.execute(query=query, values=(None, self.database[0],))
 
                     self.database = sqlite.refresh_db_input('comics', self.database)

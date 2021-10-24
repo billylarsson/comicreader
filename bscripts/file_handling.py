@@ -1112,7 +1112,7 @@ def concurrent_cbx_to_webp_convertion(cbxfile, signalgroup='_cbx_to_webp', comic
                         if times == 0:
                             check += 1
 
-                        elif times == 1 and check <= max:
+                        elif times == 1 and check <= max and os.path.exists(loc.full_path):
                             os.remove(loc.full_path)
 
 
