@@ -9,6 +9,7 @@
 Downloading the executable release will probably not provide the latest changes to the Comicreader, downloading and launching the PY-files directly will.
 
 * Batch Comicvine auto pairing added
+* Batch PDF conversion added
 * Batch WEBP conversion added
 * Added opt-in so that it pairs with Comicvine servers while converting to WEBP
 
