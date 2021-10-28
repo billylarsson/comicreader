@@ -1759,8 +1759,9 @@ class TOOLWEBP(POPUPTool):
                 db = sqlite.refresh_db_input('comics', self.infowidget.database)
                 self.main.draw_list_comics = [dict(database=db, usable=None, used=False, count=0)]
                 self.main.draw_from_comiclist()
-                self.infowidget.quit()
-                del self.infowidget
+                if self.infowidget.activated:
+                    self.infowidget.quit()
+                    del self.infowidget
 
         def setup_new_working_signal(self, database, string='_cbx_webp_convertion_'):
             file = database[DB.comics.local_path]
@@ -1782,7 +1783,10 @@ class TOOLWEBP(POPUPTool):
             t.pos(self.infowidget, bottom=self.main.back.height(), right=self.main.back)
 
         def start_next_job(self, *args, **kwargs):
-            t.start_thread(self.main.dummy, worker_arguments=1, finished_function=self.stack_empty)
+            if self.stop:
+                self.activation_toggle(force=False, save=False)
+            else:
+                t.start_thread(self.main.dummy, worker_arguments=1, finished_function=self.stack_empty)
 
         def stack_empty(self):
             for count in range(len(self.que)-1,-1,-1):
@@ -1821,9 +1825,11 @@ class TOOLWEBP(POPUPTool):
             self.activation_toggle(force=False, save=False)
 
         def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-            if self.activated: # prevents multiple runs
+            if self.activated: # prevents multiple runs stop current
+                self.stop = True
                 return
 
+            self.stop = False
             self.activation_toggle(save=False)
             if self.activated:
                 self.main.reset_widgets('main')
@@ -2019,11 +2025,13 @@ class TOOLWEBP(POPUPTool):
         self.activation_toggle(save=False)
 
         if self.activated:
-            self.show_webp_settings()
+            if 'blackgray' in dir(self):
+                self.blackgray.show()
+            else:
+                self.show_webp_settings()
 
         elif 'blackgray' in dir(self):
-            self.blackgray.close()
-            del self.blackgray
+            self.blackgray.hide()
 
 
 

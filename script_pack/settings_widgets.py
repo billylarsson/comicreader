@@ -1514,7 +1514,7 @@ class POPUPTool(GLOBALDeactivate):
         super().__init__(place=place, *args, **kwargs)
 
         self.directives['activation'] = [
-            dict(object=self, background='rgba(200,50,50,150)'),
+            dict(object=self, background='rgba(50,50,150,150)'),
         ]
 
         self.directives['deactivation'] = [

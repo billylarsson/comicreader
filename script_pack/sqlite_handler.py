@@ -166,8 +166,10 @@ class SQLite:
                 sys.exit()
 
     def refresh_db_input(self, table, db_input=None, id=None):
-        if db_input:
+        if db_input and len(db_input) > 0:
             id = db_input[0]
+        elif not id:
+            id = db_input
 
         rv = self.execute('select * from ' + table + ' where id is (?)', values=id, one=True)
         return rv

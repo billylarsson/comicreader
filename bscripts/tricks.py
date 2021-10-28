@@ -1037,6 +1037,9 @@ class ViktorinoxTechClass:
 
     @staticmethod
     def sort_by_number(fromlist, key, reverse=False):
+        if not fromlist:
+            return []
+
         rvdict = {}
         for i in fromlist:
 

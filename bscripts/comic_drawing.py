@@ -423,7 +423,6 @@ class EachPage(QtWidgets.QLabel):
                     text='BOOKMARK',
                     widget=NewBookmark,
                     post_init=True,
-                    button_width_factor=2,
                     maxsize=12,
                     kwargs=dict(
                         type='_page_new_bookmark',
@@ -438,7 +437,6 @@ class EachPage(QtWidgets.QLabel):
                     text='NEXT PAGE',
                     widget=ChangePage,
                     post_init=True,
-                    button_width_factor=2,
                     maxsize=12,
                     kwargs=dict(
                         type='_next_page',
@@ -452,7 +450,6 @@ class EachPage(QtWidgets.QLabel):
                     text='PREV PAGE',
                     widget=ChangePage,
                     post_init=True,
-                    button_width_factor=2,
                     maxsize=12,
                     kwargs=dict(
                         type='_prev_page',
@@ -467,7 +464,6 @@ class EachPage(QtWidgets.QLabel):
                     text='FIRST PAGE',
                     widget=ChangePage,
                     post_init=True,
-                    button_width_factor=2,
                     maxsize=12,
                     kwargs=dict(
                         type='_first_page',
@@ -481,7 +477,6 @@ class EachPage(QtWidgets.QLabel):
                     text='LAST PAGE',
                     widget=LastPage,
                     post_init=True,
-                    button_width_factor=2,
                     maxsize=12,
                     kwargs=dict(
                         type='_last_page',
@@ -496,7 +491,6 @@ class EachPage(QtWidgets.QLabel):
                     text='3s PAGE TURN',
                     widget=AutoChangePage,
                     post_init=True,
-                    button_width_factor=2,
                     maxsize=12,
                     tooltip='changes page every 3 seconds\nPRESS CTRL+Q to stop\nCTRL+UP / DOWN change speed',
                     kwargs=dict(
@@ -525,11 +519,11 @@ class EachPage(QtWidgets.QLabel):
             set = UniversalSettingsArea(self)
 
             title = generate_menu_title(self)
-            header = set.make_header(title=title, width=200, height=22)
+            header = set.make_header(title=title, width=170, height=22)
 
-            bg1 = set.make_this_into_checkable_buttons(d1, canvaswidth=200)
-            bg2 = set.make_this_into_checkable_buttons(d2, canvaswidth=200)
-            bg3 = set.make_this_into_checkable_buttons(d3, canvaswidth=200)
+            bg1 = set.make_this_into_checkable_buttons(d1, canvaswidth=170)
+            bg2 = set.make_this_into_checkable_buttons(d2, canvaswidth=170)
+            bg3 = set.make_this_into_checkable_buttons(d3, canvaswidth=170)
 
             xpos = ev.pos().x()
             ypos = ev.pos().y()
@@ -1305,12 +1299,11 @@ class ComicWidget(GOD):
 
                 return color
 
-            def set_all_stars_visuals(self):
+            def set_all_stars_visuals(self, paint=False):
                 """
                 the star that the mouse hovers upon is set
                 and all preseedings the rest is not set
                 """
-                paint = True
                 for i in self.parent.stars:
 
                     if paint:
@@ -1326,16 +1319,37 @@ class ComicWidget(GOD):
                 if not self.parent.activated or self.parent.metaObject().className() != 'INFOWidget':
                     return
 
-                self.set_all_stars_visuals()
+                self.set_all_stars_visuals(paint=True)
+
+            def set_rating_across_gui(self, count, star, paint=True):
+                """
+                if you have a widget in main it will set the same rating (visual effect)
+                :param count: int rating (the star-index in the list with stars(
+                :param star: widget
+                """
+                main = self.main.main
+                for thumb in main.widgets['main']:
+                    if thumb.database[0] == star.parent.database[0]:
+                        thumb.stars[count].set_all_stars_visuals(paint=paint)
+
+            def set_this_rating(self, clear=False):
+                query = 'update comics set rating = (?) where id is (?)'
+                for count, i in enumerate(self.parent.stars):
+                    if clear:
+                        sqlite.execute(query=query, values=(None, self.parent.database[0],))
+                        self.set_rating_across_gui(count, i, paint=False)
+                        return
+
+                    elif self == i:
+                        sqlite.execute(query=query, values=(count+1, self.parent.database[0],))
+                        self.parent.database = sqlite.refresh_db_input('comics', id=self.parent.database[0])
+                        self.set_rating_across_gui(count, i)
 
             def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
-                for count, i in enumerate(self.parent.stars):
-                    if self == i:
-                        sqlite.execute(
-                            'update comics set rating = (?) where id is (?)', (count+1, self.parent.database[0],))
-
-                        self.parent.database = sqlite.execute(
-                            'select * from comics where id is (?)', self.parent.database[0])
+                if ev.button() == 1:
+                    self.set_this_rating()
+                elif ev.button() == 2:
+                    self.set_this_rating(clear=True)
 
         def make_stars(self, rating, starting_coordinates, enhancefactor=1):
             """
@@ -1366,7 +1380,7 @@ class ComicWidget(GOD):
                     t.pos(star, coat=self.stars[-1], after=self.stars[-1], x_margin=1, background=color)
                 else:
                     t.pos(star, coat=self.stars[-1], background=color)
-                    t.pos(star, left=self.stars[-1].geometry().right() + 2, right=self.cover)
+                    t.pos(star, left=self.stars[-1].geometry().right() + 2, right=self.cover.geometry().right() - 1)
                     t.pos(star, width=star, add=1) # not sure why yet
 
                 self.stars.append(star)

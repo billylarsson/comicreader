@@ -1106,7 +1106,7 @@ class INFOWidget(ComicWidget):
                         t.correct_broken_font_size(self.textlabel)
 
                 def delete_button_mousePressEvent(self, *args, **kwargs):
-                    for i in ['comic_id', 'volume_id', 'publisher_id']:
+                    for i in ['comic_id', 'volume_id', 'publisher_id', 'issue_number']:
                         query = f'update comics set {i} = (?) where id is (?)' # yes i know
                         sqlite.execute(query=query, values=(None, self.database[0],))
 
@@ -1922,7 +1922,12 @@ class INFOWidget(ComicWidget):
 
             def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
                 volumes = [x['database'] for x in self.volumes if x['database'][0]]
-                self.main.search_comics(volumes)
+                if volumes:
+                    query = 'select * from comics where volume_id = (?)'
+                    volumes = sqlite.execute(query=query, values=volumes[0][DB.comics.volume_id], all=True)
+                    if volumes:
+                        volumes = t.sort_by_number(volumes, DB.comics.issue_number, reverse=False)
+                        self.main.search_comics(volumes)
 
         if 'draw_volumes_button' in dir(self):
             return
@@ -2211,6 +2216,7 @@ class INFOWidget(ComicWidget):
                 t.pos(self.cv_searcher, height=h, above=self.pair_button, y_margin=2)
 
     def quit(self):
+        self.activation_toggle(force=False, save=False)
         self.signal.disconnect()
 
         for count in range(len(self.main.widgets['info']) - 1, -1, -1):
