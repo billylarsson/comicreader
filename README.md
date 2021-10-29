@@ -33,6 +33,9 @@ https://www.7-zip.org/download.html
 3.c: If you want PDF support you may want to download Poppler and point the program its binaries ie c:\Program Files\poppler-0.68.0\bin\
 http://blog.alivate.com.au/poppler-windows/
 
+4:
+Linux only: sudo apt install unrar seems to do good for RARsupport
+
 RUNNING:
 
 1a: Unpack the zipfile and run Comicreader.exe (Windows only)
