@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-PROGRAM = 'Python Comicreader v2.2'
+PROGRAM = 'Python Comicreader'
+VERSION = 'v2.2'
 
 import os
 import platform
@@ -10,11 +11,12 @@ def set_enviorment_variables():
     # * == set None for default value
     """
     os.environ['PROGRAM_NAME']         = PROGRAM
-    os.environ['DATABASE_FILENAME']    = PROGRAM + '_database.sqlite'
+    os.environ['DATABASE_FILENAME']    = PROGRAM.replace(' ', '_') + '_database.sqlite'
     os.environ['DATABASE_FOLDER']      = '/home/plutonergy/Documents' # must exist, else: program-folder *
     os.environ['DATABASE_SUBFOLDER']   = PROGRAM # if preset, will be added to DATABASE_FOLDER *
     os.environ['TMP_DIR']              = '/mnt/ramdisk' # must exist, else: systems tmp-folder *
     os.environ['INI_FILENAME']         = 'settings.ini' # program-folder
+    os.environ['VERSION']              = VERSION
 
 def set_program_root_folder_in_eviorment():
     """
@@ -38,5 +40,5 @@ from PyQt5 import QtWidgets
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
-    window = LSComicreaderMain(primary_screen=app.primaryScreen())
+    window = LSComicreaderMain(screens=app.screens())
     app.exec_()

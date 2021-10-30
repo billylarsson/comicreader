@@ -1,7 +1,7 @@
 from PyQt5                        import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore                 import QPoint, Qt
 from PyQt5.QtGui                  import QKeySequence
-from PyQt5.QtWidgets              import QShortcut
+from PyQt5.QtWidgets              import QShortcut, QDesktopWidget
 from bscripts.comic_drawing       import ComicWidget
 from bscripts.database_stuff      import DB, sqlite
 from bscripts.file_handling       import scan_for_new_comics
@@ -14,12 +14,14 @@ from bscripts.widgets             import TOOLReading, TOOLSearch, TOOLSort
 from bscripts.widgets             import TOOLWEBP
 from script_pack.settings_widgets import GOD
 import os
+import screeninfo
 import platform
 import time
 
 class LSComicreaderMain(QtWidgets.QMainWindow):
-    def __init__(self, primary_screen):
+    def __init__(self, screens):
         super(LSComicreaderMain, self).__init__()
+        self.screens = screens
 
         self.centralwidget = QtWidgets.QWidget(self)
 
@@ -72,7 +74,7 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
         self._gridlayout.addWidget(self.back, 0, 0, 1, 1)
         self.setCentralWidget(self.centralwidget)
 
-        self.setWindowTitle('Python Comicreader v2.1 alpha')
+        self.setWindowTitle(os.environ['PROGRAM_NAME'] + ' ' + os.environ['VERSION'])
         sqlite.dev_mode = t.config('dev_mode')
         t.style(self, name='main')
         self.widgets = dict(main=[], info=[])
@@ -92,11 +94,38 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
         self.show()
         self.create_tool_buttons()
+        t.start_thread(self.dummy, finished_function=self.set_right_screen_position)
+
+    def set_right_screen_position(self):
+        primary = [x for x in screeninfo.get_monitors() if x.is_primary]
+        if not primary:
+            self.set_right_screen_position_legacy()
+            return
+
+        primary = primary[0]
+
+        x = int(primary.width * 0.1)
+        y = int(primary.height * 0.1)
+        w = int(primary.width * 0.8)
+        h = int(primary.height * 0.8)
+
+        self.move(x, y)
+        self.resize(w, h)
+
+        if t.config('maximized'):
+            self.minmax.how_much_is_the_fish(maximize=True)
+
+    def set_right_screen_position_legacy(self):
+        primary_screen = self.screens[0]
 
         screen_width = primary_screen.size().width()
         screen_height = primary_screen.size().height()
-        self.setGeometry(
-            int(screen_width * 0.1), int(screen_width * 0.05), int(screen_width * 0.75), int(screen_height * 0.75))
+
+        ag = QDesktopWidget().availableGeometry()
+        sg = QDesktopWidget().screenGeometry()
+
+        self.move(sg.x() + int(screen_width * 0.1), sg.y() + int(screen_height * 0.1))
+        self.resize(int(screen_width * 0.8), int(screen_height * 0.8))
 
     def shadehandler(self):
         class SHADE(GOD):

@@ -126,7 +126,8 @@ def unzipper(zip_file=None, database=None, index=0, filename=None):
     ext = ext[-1]
     loc_destination = t.separate_file_from_folder(extract_folder + '/' + extract_file + '.' + ext)
 
-    if os.path.exists(loc_destination.full_path) and os.path.getsize(loc_destination.full_path) > 0:
+    _dest = loc_destination.full_path
+    if os.path.exists(_dest) and os.path.isfile(_dest) and os.path.getsize(_dest) > 0:
         return loc_destination.full_path
 
     try:
@@ -189,13 +190,9 @@ def unzipper(zip_file=None, database=None, index=0, filename=None):
                 rf = rarfile.RarFile(loc_source.full_path)
                 single_file = rf.getinfo(file_to_extract)
                 hack_unrar(rf, single_file, loc_destination.full_path)
-
-            except rarfile.NotRarFile:
-                return False
-            except rarfile.BadRarFile:
-                return False
             except:
                 return False
+
     except:
         return False
 

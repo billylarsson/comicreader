@@ -15,6 +15,7 @@ from script_pack.settings_widgets import GLOBALDeactivate, GOD
 from script_pack.settings_widgets import HighlightRadioBoxGroup
 from script_pack.settings_widgets import UniversalSettingsArea
 import math
+import screeninfo
 import os
 import pickle
 import time
@@ -539,23 +540,43 @@ class EachPage(QtWidgets.QLabel):
 
             self.reading_menu = set
 
+    def store_current_reading_geometry(self):
+        readpos = t.config('reading_positions') or {}
+
+        for i in ['reading_mode_one', 'reading_mode_two', 'reading_mode_three', 'reading_mode_four']:
+
+            if not t.config(i):
+                continue
+
+            if i not in readpos:
+                readpos[i] = {}
+
+            _, two_pages, __ = self.current_and_how_many_pages()
+
+            if two_pages:
+                pages = 'twopage'
+            else:
+                pages = 'onepage'
+
+            x = self.parent.x()
+            y = self.parent.y()
+
+            readpos[i][pages] = dict(x=x, y=y)
+
+            t.save_config('reading_positions', readpos)
+            return
+
+    def determine_screen_and_width_height(self):
+        screens = screeninfo.get_monitors()
+        x = self.parent.x() * 1.1
+        for i in screens:
+            if x > i.x and x < i.x + i.width:
+                self.parent.monitor_info = i
+
 
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
-        _, two_pages, __ = self.current_and_how_many_pages()
-
-        if not two_pages and self.width() > self.height():
-            two_pages = True
-
-        x = self.parent.x()
-        y = self.parent.y()
-
-        if not two_pages and self.parent.reading_position_one_page != (x,y,):
-            self.parent.reading_position_one_page = (x,y,)
-            t.save_config('reading_position_one_page', self.parent.reading_position_one_page)
-
-        elif two_pages and self.parent.reading_position_two_page != (x,y,):
-            self.parent.reading_position_two_page = (x,y,)
-            t.save_config('reading_position_two_page', self.parent.reading_position_two_page)
+        self.store_current_reading_geometry()
+        self.determine_screen_and_width_height()
 
     def mouseMoveEvent(self, event):
         if event.button() == 2 or 'old_position' not in dir(self.parent):
@@ -570,11 +591,9 @@ class PAGE(QtWidgets.QLabel):
         super().__init__()
         self.setLineWidth(0)
         self.setMidLineWidth(0)
+        self.monitor_info = False
 
         self.main = main
-
-        self.reading_position_one_page = t.config('reading_position_one_page') or (0,0,)
-        self.reading_position_two_page = t.config('reading_position_two_page') or (0,0,)
 
         self.setWindowFlags(Qt.FramelessWindowHint)
 
@@ -847,6 +866,9 @@ class PAGE(QtWidgets.QLabel):
         return True
 
     def get_screen_size(self):
+        if self.monitor_info:
+            return self.monitor_info.width, self.monitor_info.height
+
         screen = QtWidgets.QDesktopWidget().screenGeometry()
         height = screen.height()
         width = screen.width()
@@ -1096,19 +1118,49 @@ class PAGE(QtWidgets.QLabel):
         def set_scroller_and_position(self):
             self.v_scroller.setValue(0)
 
-            _, two_pages, __ = self.current_and_how_many_pages()
+            for i in ['reading_mode_one', 'reading_mode_two', 'reading_mode_three', 'reading_mode_four']:
 
-            if not two_pages and self.width() > self.height():
-                two_pages = True
+                if not t.config(i):
+                    continue
 
-            if not two_pages:
-                x, y = self.reading_position_one_page[0], self.reading_position_one_page[1]
-                self.setGeometry(x, y, self.width(), self.height())
+                readpos = t.config('reading_positions') or {}
+
+                if i not in readpos:
+                    break
+
+                _, two_pages, __ = self.current_and_how_many_pages()
+
+                if two_pages:
+                    pages = 'twopage'
+                else:
+                    pages = 'onepage'
+
+                if pages not in readpos[i]:
+                    break
+
+                if not self.monitor_info:
+                    primary = [x for x in screeninfo.get_monitors() if x.is_primary]
+                    if primary:
+                        primary = primary[0]
+                        if readpos[i][pages]['x'] >= primary.x + primary.width:
+                            return False
+                        elif readpos[i][pages]['x'] < primary.x:
+                            return False
+                        elif readpos[i][pages]['y'] >= primary.y + primary.height:
+                            return False
+                        elif readpos[i][pages]['y'] < primary.y:
+                            return False
+
+                self.setGeometry(readpos[i][pages]['x'], readpos[i][pages]['y'], self.width(), self.height())
+                return True
+
+        if not set_scroller_and_position(self):
+            primary = [x for x in screeninfo.get_monitors() if x.is_primary]
+            if not primary:
+                self.setGeometry(0,0,self.width(),self.height())
             else:
-                x, y = self.reading_position_two_page[0], self.reading_position_two_page[1]
-                self.setGeometry(x, y, self.width(), self.height())
+                self.setGeometry(primary[0].x, primary[0].y, self.width(), self.height())
 
-        set_scroller_and_position(self)
         update_current_page_progress(self)
         self.setWindowTitle(f"{self.database[DB.comics.local_path]} page: {self.database[DB.comics.current_page]}")
 

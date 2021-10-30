@@ -1244,22 +1244,27 @@ class TOOLMaxiMini(POPUPTool):
         self.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
         self.move(1,1)
         self.set_position()
-        self.activation_toggle(save=False)
-        self.how_much_is_the_fish()
         t.set_my_pixmap(self)
 
-    def how_much_is_the_fish(self):
-        if not self.activated:
+    def how_much_is_the_fish(self, maximize=False, minimize=False):
+        if maximize:
+            self.activation_toggle(force=True, save=False)
+        elif minimize:
+            self.activation_toggle(force=False, save=False)
+
+        if self.activated:
             self.main.showMaximized()
         else:
             self.main.showNormal()
+
+        t.save_config('maximized', self.activated)
 
     def set_position(self):
         t.pos(self, right=dict(left=self.main.quitter), x_margin=1)
 
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
-        self.activation_toggle()
         if ev.button() == 1:
+            self.activation_toggle()
             self.how_much_is_the_fish()
 
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:
