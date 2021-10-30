@@ -12,6 +12,7 @@ Downloading the executable release will probably not provide the latest changes 
 * Batch PDF conversion added
 * Batch WEBP conversion added
 * Added opt-in so that it pairs with Comicvine servers while converting to WEBP
+* Added support for multiple screens so to speak, very experimental, not in release 2.1 (code only)
 
 
 INSTALLATION:
