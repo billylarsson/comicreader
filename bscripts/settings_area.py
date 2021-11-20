@@ -239,7 +239,7 @@ class TOOLSettings(POPUPTool):
 
         dict_update_hash = [
             dict(
-                text='SCAN FOR NEW FILES', textsize=TEXTSIZE, button_width_factor=2.2,
+                text='SCAN FOR NEW FILES', textsize=TEXTSIZE-2, button_width_factor=2.2,
                 button_color='darkCyan', text_color='gray', post_init=True,
                 widget=self.UpdateLibrary, button_text='',
                 tooltip='updates library in the background',
@@ -248,7 +248,7 @@ class TOOLSettings(POPUPTool):
 
         dict_parse_for_cvid = [
             dict(
-                text='PARSE UNPARSED FILES', textsize=TEXTSIZE, button_width_factor=2.2,
+                text='PARSE UNPARSED FILES', textsize=TEXTSIZE-2, button_width_factor=2.2,
                 button_color='darkCyan', text_color='gray', post_init=True,
                 widget=self.HashUnHashed, button_text='',
                 tooltip='iters all unitered comics for comicvine id (comictagger), we do this once per file as long as MD5 is checked (thats how we track such event for now, if MD5 is not checked all files will be processed next time again, and again, and again...)',
@@ -257,13 +257,13 @@ class TOOLSettings(POPUPTool):
 
         dict_md5_comic = [
             dict(
-                text='HASH MD5 FROM NEW FILES', textsize=TEXTSIZE,
+                text='HASH MD5 FROM NEW FILES', textsize=TEXTSIZE-2,
                 widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='first time an item is to be shown to user an MD5 checksum is initiated and stored into database, this is conveniet when keeping track of multiple files and sharing ratings with friends',
                 kwargs = dict(type='md5_files')),
 
             dict(
-                text='SEARCH ZIP FOR CVID', textsize=TEXTSIZE,
+                text='SEARCH ZIP FOR CVID', textsize=TEXTSIZE-2,
                 widget=CheckableAndGlobalHighlight, post_init=True,
                 tooltip='searches the file contents for comicvine id (comictagger)',
                 kwargs = dict(type='comictagger_file'))
