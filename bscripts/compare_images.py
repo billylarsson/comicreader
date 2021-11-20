@@ -231,7 +231,6 @@ class ImageComparer:
         height = 99999
 
         for i in self.work['original_images']:
-
             if self.grayscale:
                 im = Image.open(i).convert('LA')
             else:

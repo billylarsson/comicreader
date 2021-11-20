@@ -622,6 +622,10 @@ class ViktorinoxTechClass:
         return header
 
     @staticmethod
+    def header_generator(*args, **kwargs):
+        return tech.header(*args, **kwargs)
+
+    @staticmethod
     def digit_prolonger(numeric_value, digits=2):
         if numeric_value == None:
             return 'N/A'
@@ -636,59 +640,100 @@ class ViktorinoxTechClass:
         return numeric_value
 
     @staticmethod
-    def download_file(url, file=None, reuse=True, header=None):
-        """
-        downloads a file, if file already exists, its is NOT redownloaded
-        if the downloaded file is 0 bytes, its removed, returning False
-        :param url: string
-        :param file: string, None (autogenerate tmpfile)
-        :param header: will use default header if not specified
-        :return: bool
-        """
+    def download_file(url, file=None, headers={}, reuse=True, days=False):
+
+        def method_one(url, file, headers, gcontext=None, runner=0):
+            while not os.path.exists(file.full_path) and runner < 5:
+                runner += 1
+
+                if runner == 1: # first run do this!
+                    try:
+                        with requests.get(url, stream=True, headers=headers) as r:
+                            r.raw.read = partial(r.raw.read, decode_content=True)
+                            with open(file.full_path, 'wb') as f:
+                                shutil.copyfileobj(r.raw, f)
+                    except:
+                        continue
+                else:
+                    urlobj = Request(url, headers=headers)
+                    with urlopen(urlobj, context=gcontext) as response, open(file.full_path, 'wb') as f:
+                        shutil.copyfileobj(response, f)
+
+                if os.path.exists(file.full_path):
+                    if os.path.getsize(file.full_path) > 0:
+                        break
+                    else:
+                        os.remove(file.full_path)
+
+                headers = tech.header_generator(randominize=True)
+                gcontext = ssl.SSLContext()
 
         if not file:
-            if reuse:
-                file = tech.tmp_file(file_of_interest=url, reuse=True, hash=True)
-            else:
-                file = tech.tmp_file(new=True)
+            file = tech.tmp_file(file_of_interest=url, hash=True, reuse=reuse, days=days)
 
-        loc = tech.separate_file_from_folder(file)
+        headers = tech.header_generator(**headers)
+        file = tech.separate_file_from_folder(file)
 
-        if os.path.exists(loc.full_path):
-            return loc.full_path
-
-        elif not os.path.exists(loc.folder):
-            pathlib.Path(loc.folder).mkdir(parents=True)
-
-        if header:
-            headers = tech.header(**header)
+        method_one(url, file, headers)
+        if os.path.exists(file.full_path):
+            return file.full_path
         else:
-            headers = tech.header()
+            print('DOWNLOAD ERROR:', url, '->', file.full_path)
 
-        spamfriendly = 5
-        while not os.path.exists(loc.full_path) and spamfriendly > 0:
-            spamfriendly -= 1
-
-            urlobj = Request(url, headers=headers)
-            try: webpage = urlopen(urlobj).read()
-            except:
-                gcontext = ssl.SSLContext()
-                urlobj = Request(url, headers=headers)
-
-                try: webpage = urlopen(urlobj, context=gcontext).read()
-                except: continue
-
-            with open(loc.full_path, 'wb') as new_file:
-                new_file.write(webpage)
-
-            if os.path.exists(loc.full_path):
-                if os.path.getsize(loc.full_path) > 0:
-                    return loc.full_path
-                else:
-                    os.remove(loc.full_path)
-
-        print("ERROR Could not download:", url)
-        return False
+    # @staticmethod
+    # def download_file(url, file=None, reuse=True, header=None):
+    #     """
+    #     downloads a file, if file already exists, its is NOT redownloaded
+    #     if the downloaded file is 0 bytes, its removed, returning False
+    #     :param url: string
+    #     :param file: string, None (autogenerate tmpfile)
+    #     :param header: will use default header if not specified
+    #     :return: bool
+    #     """
+    #
+    #     if not file:
+    #         if reuse:
+    #             file = tech.tmp_file(file_of_interest=url, reuse=True, hash=True)
+    #         else:
+    #             file = tech.tmp_file(new=True)
+    #
+    #     loc = tech.separate_file_from_folder(file)
+    #
+    #     if os.path.exists(loc.full_path):
+    #         return loc.full_path
+    #
+    #     elif not os.path.exists(loc.folder):
+    #         pathlib.Path(loc.folder).mkdir(parents=True)
+    #
+    #     if header:
+    #         headers = tech.header(**header)
+    #     else:
+    #         headers = tech.header()
+    #
+    #     spamfriendly = 5
+    #     while not os.path.exists(loc.full_path) and spamfriendly > 0:
+    #         spamfriendly -= 1
+    #
+    #         urlobj = Request(url, headers=headers)
+    #         try: webpage = urlopen(urlobj).read()
+    #         except:
+    #             gcontext = ssl.SSLContext()
+    #             urlobj = Request(url, headers=headers)
+    #
+    #             try: webpage = urlopen(urlobj, context=gcontext).read()
+    #             except: continue
+    #
+    #         with open(loc.full_path, 'wb') as new_file:
+    #             new_file.write(webpage)
+    #
+    #         if os.path.exists(loc.full_path):
+    #             if os.path.getsize(loc.full_path) > 0:
+    #                 return loc.full_path
+    #             else:
+    #                 os.remove(loc.full_path)
+    #
+    #     print("ERROR Could not download:", url)
+    #     return False
 
     @staticmethod
     def save_image_as_blob(image_path, md5, width=None, height=None, quality=70, method=1):

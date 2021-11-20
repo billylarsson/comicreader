@@ -1140,6 +1140,7 @@ def concurrent_cbx_to_webp_convertion(cbxfile, signalgroup='_cbx_to_webp', comic
         return [x['locfile'].full_path for x in loc_files_to_convert]
 
     if not extract_all_to(cbxfile=cbxfile, tmpfolder=tmpfolder):
+        signal.error.emit(progressdict)
         return False
 
     delete_spam(tmpfolder=tmpfolder)

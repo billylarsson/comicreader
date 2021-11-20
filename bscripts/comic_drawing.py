@@ -551,15 +551,13 @@ class EachPage(QtWidgets.QLabel):
             if i not in readpos:
                 readpos[i] = {}
 
-            _, two_pages, __ = self.current_and_how_many_pages()
+            x = self.parent.x()
+            y = self.parent.y()
 
-            if two_pages:
+            if self.parent.width() > self.parent.height():
                 pages = 'twopage'
             else:
                 pages = 'onepage'
-
-            x = self.parent.x()
-            y = self.parent.y()
 
             readpos[i][pages] = dict(x=x, y=y)
 
@@ -712,7 +710,13 @@ class PAGE(QtWidgets.QLabel):
 
         self.pixmap = QPixmap(imgfile).scaledToHeight(height, QtCore.Qt.SmoothTransformation)
 
-        if self.pixmap.width() > width:
+        if self.pixmap.width() > self.pixmap.height() and os.path.exists('/mnt/ramdisk'): # privilegies ;-)
+            width, height = self.get_screen_size(primary=True)
+            self.pixmap = QPixmap(imgfile).scaledToWidth(width, QtCore.Qt.SmoothTransformation)
+            if self.pixmap.height() > height:
+                self.pixmap = QPixmap(imgfile).scaledToHeight(height, QtCore.Qt.SmoothTransformation)
+
+        elif self.pixmap.width() > width:
             self.pixmap = QPixmap(imgfile).scaledToWidth(width, QtCore.Qt.SmoothTransformation)
 
         self.pixmap_object.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
@@ -865,7 +869,12 @@ class PAGE(QtWidgets.QLabel):
         put_together_primary_and_secondary(self)
         return True
 
-    def get_screen_size(self):
+    def get_screen_size(self, primary=False):
+        if primary:
+            primary = [x for x in screeninfo.get_monitors() if x.is_primary]
+            if primary:
+                return primary[0].width, primary[0].height
+
         if self.monitor_info:
             return self.monitor_info.width, self.monitor_info.height
 
@@ -1126,17 +1135,15 @@ class PAGE(QtWidgets.QLabel):
                 readpos = t.config('reading_positions') or {}
 
                 if i not in readpos:
-                    break
+                    return False
 
-                _, two_pages, __ = self.current_and_how_many_pages()
-
-                if two_pages:
+                if self.pixmap.width() > self.pixmap.height():
                     pages = 'twopage'
                 else:
                     pages = 'onepage'
 
                 if pages not in readpos[i]:
-                    break
+                    return False
 
                 if not self.monitor_info:
                     primary = [x for x in screeninfo.get_monitors() if x.is_primary]

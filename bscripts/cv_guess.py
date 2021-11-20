@@ -1,4 +1,4 @@
-from bscripts.file_handling import unzipper
+from bscripts.file_handling import extract_from_zip_or_pdf
 from bscripts.compare_images import ImageComparer
 from bscripts.database_stuff import DB, sqlite
 from bscripts.tricks import tech as t
@@ -332,10 +332,11 @@ class GUESSComicVineID:
         return vol_rv
 
     def fetch_best_candidate(self, candidates):
-        org_image = unzipper(database=self.database, index=0)
+        org_image = extract_from_zip_or_pdf(database=self.database, index=0)
 
         lap = []
         for i in candidates:
+
             rgb = ImageComparer(org_image, i['cover'])
             gray = ImageComparer(org_image, i['cover'], grayscale=True)
             quicktotal = (rgb.total + gray.total) / 2

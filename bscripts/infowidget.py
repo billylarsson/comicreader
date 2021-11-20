@@ -1604,7 +1604,9 @@ class INFOWidget(ComicWidget):
                     if count > 10:
                         break
 
-                    org_image = unzipper(database=candidate, index=0)
+                    org_image = extract_from_zip_or_pdf(database=candidate, index=0)
+                    if not org_image:
+                        continue
 
                     rgb = ImageComparer(org_image, self.image_path)
                     gray = ImageComparer(org_image, self.image_path, grayscale=True)
@@ -1626,7 +1628,9 @@ class INFOWidget(ComicWidget):
                         self.proxy_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
                     else:
-                        self.parent.re_init(self.database)
+                        self.database = sqlite.refresh_db_input('comics', id=self.database[0])
+                        if os.path.exists(self.database[DB.comics.local_path]):
+                            self.parent.re_init(self.database)
 
         neighbour = RelativeWidget(self.main.back, main=self.main, parent=self, type='_neighbour', **instructions)
 

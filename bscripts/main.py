@@ -104,12 +104,12 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
 
         primary = primary[0]
 
-        x = int(primary.width * 0.1)
-        y = int(primary.height * 0.1)
+        x = int(primary.x)
+        y = int(primary.y)
         w = int(primary.width * 0.8)
         h = int(primary.height * 0.8)
 
-        self.move(x, y)
+        self.move(x + int(primary.width * 0.1), y + (int(primary.height * 0.1)))
         self.resize(w, h)
 
         if t.config('maximized'):
@@ -628,4 +628,3 @@ class LSComicreaderMain(QtWidgets.QMainWindow):
     def mouseReleaseEvent(self, ev: QtGui.QMouseEvent) -> None:
         if 'old_position' in dir(self):
             del self.old_position
-
